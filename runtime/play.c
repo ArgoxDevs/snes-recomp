@@ -28,6 +28,7 @@
  * Escape = quit. Controllers: the first one connected is player 1, the second player 2.
  * --no-window runs without opening a window (for tests): it needs no display, but still SDL2.dll. For tests of the
  * menu there are also --menu-keys NAME,NAME,... (SDL key names pressed one per frame from frame 3, as if typed),
+ * --menu-in-picture (the menu is part of the picture, as the tests of the effects need; otherwise it is a layer of the window),
  * --menu-shot FILE.png and --menu-page N (the menu drawn over the last picture), --slot-shot FILE.png (the same with the slot picker) and --print-config.
  * With the menu (F1) or the slot picker (F6) open, a left click does what a tap does on the phone: tabs, rows (left half of a value down, right half up), outside closes.
  * --record FILE writes what player 1 pressed as a route (`A-B BUTTONS` lines, `@frames N`; the format of alttp-recomp's scripts/route.py,
@@ -435,11 +436,36 @@ static int pre_w, pre_h, ovl_w, ovl_h, ovl_lines, ovl_sl = -1, ovl_grid = -1, ov
 static uint8_t fb_show[SCREEN_H * SCREEN_W_MAX * 3]; /* the picture with the menu or the counter drawn on it */
 static int show_w = SCREEN_W;                         /* width of the picture that shown_frame() returned */
 static uint8_t *ovl_buf;
+static int menu_in_picture; /* --menu-in-picture: the menu is drawn into the picture (as before the layer), for the tests of the effects */
+static SDL_Texture *layer_tex; /* the layer of the menu in the renderer path */
 static size_t ovl_cap;
 
 static int view_lines(void) {
     return SCREEN_H - 2 * cfg.eff.v[O_OVERSCAN];
 }
+
+/* The menu is a layer of 256x224 units drawn over the window (after the picture and its effects, so they never touch it),
+ * magnified by a whole factor so its pixels stay sharp: `layer_geom` gives the factor (a window of 270 lines per factor, as
+ * far as the width allows) and the corner of the layer in a window of w x h; `layer_pt` takes a window point to the layer
+ * (-1, -1 outside it). */
+static void layer_geom(int w, int h, int *s, int *ox, int *oy) {
+    int k = h / 270;
+    if (w / SCREEN_W < k) k = w / SCREEN_W;
+    if (k < 1) k = 1;
+    *s = k;
+    *ox = (w - SCREEN_W * k) / 2;
+    *oy = (h - SCREEN_H * k) / 2;
+}
+
+static void layer_pt(int px, int py, int w, int h, int *cx, int *cy) {
+    int s, ox, oy;
+    layer_geom(w, h, &s, &ox, &oy);
+    if (px < ox || py < oy || px >= ox + SCREEN_W * s || py >= oy + SCREEN_H * s) { *cx = *cy = -1; return; }
+    *cx = (px - ox) / s;
+    *cy = (py - oy) / s;
+}
+
+static void layer_draw(int w, int h, int use_gl);
 
 /* Draws the picture `fb` (show_w x 224, as shown_frame() set it) in the window with the options: aspect, scaling, filter,
  * overscan and effects. The texture has the size of the picture, so that the filters do not read what lies beyond it. */
@@ -515,6 +541,7 @@ static void present(const uint8_t *fb) {
         }
         if (tex_ovl) SDL_RenderCopy(ren, tex_ovl, NULL, &dst);
     }
+    layer_draw(w, h, 0);
     touch_draw();
     SDL_RenderPresent(ren);
     st_present += SDL_GetPerformanceCounter() - p0;
@@ -529,6 +556,7 @@ static void present_gl(const uint8_t *fb) {
     r = view_rect(w, h, cfg.eff.v[O_ASPECT], cfg.eff.v[O_SCALING], lines, show_w);
     gl_draw(fb, show_w, SCREEN_H, w, h, r.x, r.y, r.w, r.h, cfg.eff.v[O_OVERSCAN], lines,
             cfg.eff.v[O_SCANLINES], cfg.eff.v[O_CRT_MASK], cfg.eff.v[O_CRT_CURVE], cfg.eff.v[O_CRT_BLOOM]);
+    layer_draw(w, h, 1);
     SDL_GL_SwapWindow(win);
     st_present += SDL_GetPerformanceCounter() - p0;
 }
@@ -569,6 +597,7 @@ static uint8_t *present_shot_gl(const uint8_t *shown) {
         if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER_) == GL_FRAMEBUFFER_COMPLETE_) {
             gl_draw(shown, show_w, SCREEN_H, present_w, present_h, r.x, r.y, r.w, r.h, cfg.eff.v[O_OVERSCAN], view_lines(),
                     cfg.eff.v[O_SCANLINES], cfg.eff.v[O_CRT_MASK], cfg.eff.v[O_CRT_CURVE], cfg.eff.v[O_CRT_BLOOM]);
+            layer_draw(present_w, present_h, 1);
             raw = (uint8_t *)malloc((size_t)present_w * present_h * 3);
             pix = (uint8_t *)malloc((size_t)present_w * present_h * 3);
             if (raw && pix) {
@@ -615,7 +644,7 @@ static void present_shot(void) {
 static void present_shot_sw(void) {
     SDL_Surface *surf = SDL_CreateRGBSurfaceWithFormat(0, present_w, present_h, 24, SDL_PIXELFORMAT_RGB24);
     SDL_Renderer *sr, *keep_ren = ren;
-    SDL_Texture *keep_tex = tex, *keep_pre = tex_pre, *keep_ovl = tex_ovl;
+    SDL_Texture *keep_tex = tex, *keep_pre = tex_pre, *keep_ovl = tex_ovl, *keep_lay = layer_tex;
     uint8_t *pix;
     int lines = view_lines(), keep_tex_w = tex_w, shown_w;
     const uint8_t *shown;
@@ -623,7 +652,7 @@ static void present_shot_sw(void) {
     ren = sr;
     tex = NULL; /* present() makes one for the software renderer */
     tex_w = 0;
-    tex_pre = tex_ovl = NULL;
+    tex_pre = tex_ovl = layer_tex = NULL;
     pre_w = ovl_w = 0; ovl_sl = ovl_grid = -1;
     shown = shown_frame();
     shown_w = show_w;
@@ -635,10 +664,11 @@ static void present_shot_sw(void) {
     free(pix);
     if (tex_pre) SDL_DestroyTexture(tex_pre);
     if (tex_ovl) SDL_DestroyTexture(tex_ovl);
+    if (layer_tex) SDL_DestroyTexture(layer_tex);
     if (tex) SDL_DestroyTexture(tex);
     SDL_DestroyRenderer(sr);
     SDL_FreeSurface(surf);
-    ren = keep_ren; tex = keep_tex; tex_w = keep_tex_w; tex_pre = keep_pre; tex_ovl = keep_ovl;
+    ren = keep_ren; tex = keep_tex; tex_w = keep_tex_w; tex_pre = keep_pre; tex_ovl = keep_ovl; layer_tex = keep_lay;
 }
 
 static void save_picture(void) {
@@ -787,6 +817,8 @@ static void destroy_view(void) {
     if (tex_pre) SDL_DestroyTexture(tex_pre);
     if (tex_ovl) SDL_DestroyTexture(tex_ovl);
     if (tex) SDL_DestroyTexture(tex);
+    if (layer_tex) SDL_DestroyTexture(layer_tex);
+    layer_tex = NULL;
     tex = tex_pre = tex_ovl = NULL;
     tex_w = pre_w = pre_h = ovl_w = ovl_h = 0;
     ovl_sl = ovl_grid = -1;
@@ -2035,31 +2067,17 @@ static int mouse_mode; /* 1 while a mouse click (not a finger) is handled by men
 
 /* Where the window point (px, py) is on the 256x224 picture of the menu (-1, -1 outside it); 0 when it is on a control of the screen. */
 static int menu_canvas_pt(int px, int py, int w, int h, int *cxo, int *cyo) {
-    int lines = view_lines(), e = (show_w - SCREEN_W) / 2, cx, cy;
-    Rect r;
+    int cx, cy;
     if (touch_hit(&tcfg, touch_layout(&tcfg, w, h), w, h, px, py) >= 0) return 0;
-    r = view_rect(w, h, cfg.eff.v[O_ASPECT], cfg.eff.v[O_SCALING], lines, show_w);
-    touch_place(&r, w, h);
-    if (px < r.x || py < r.y || px >= r.x + r.w || py >= r.y + r.h) { cx = cy = -1; }
-    else {
-        cx = (int)((long)(px - r.x) * show_w / r.w) - e;
-        cy = (int)((long)(py - r.y) * lines / r.h) + cfg.eff.v[O_OVERSCAN];
-    }
+    layer_pt(px, py, w, h, &cx, &cy);
     *cxo = cx; *cyo = cy;
     return 1;
 }
 
 static int menu_tap(int px, int py, int w, int h) {
-    int lines = view_lines(), e = (show_w - SCREEN_W) / 2, cx, cy;
-    Rect r;
+    int cx, cy;
     if (touch_hit(&tcfg, touch_layout(&tcfg, w, h), w, h, px, py) >= 0) return 0;
-    r = view_rect(w, h, cfg.eff.v[O_ASPECT], cfg.eff.v[O_SCALING], lines, show_w);
-    touch_place(&r, w, h);
-    if (px < r.x || py < r.y || px >= r.x + r.w || py >= r.y + r.h) { cx = cy = -1; }
-    else {
-        cx = (int)((long)(px - r.x) * show_w / r.w) - e;
-        cy = (int)((long)(py - r.y) * lines / r.h) + cfg.eff.v[O_OVERSCAN];
-    }
+    layer_pt(px, py, w, h, &cx, &cy);
     return menu_tap_canvas(cx, cy);
 }
 
@@ -2206,11 +2224,46 @@ static int parse_log_wram(char *arg) {
 
 #include "play_state.h"
 
+static uint8_t layer_rgba[SCREEN_W * SCREEN_H * 4];
+enum { LAYER_DIM = 150 }; /* how much of black dims the game under the menu, 0 to 255 */
+
+/* Draws the menu (or the slot picker) over the window: the game dimmed, then the 256x224 layer magnified by a whole factor.
+ * The pixels the menu does not paint are see-through, so the game shows around the panel. */
+static void layer_draw(int w, int h, int use_gl) {
+    int s, ox, oy, i;
+    SDL_Rect d;
+    if (menu_in_picture || (!menu_open && !slot_open)) return;
+    ui_key_mode = 1;
+    if (slot_open) slot_draw(fb_front); else menu_draw(fb_front);
+    ui_key_mode = 0;
+    for (i = 0; i < SCREEN_W * SCREEN_H; i++) {
+        const uint8_t *p = fb_menu + (size_t)i * 3;
+        uint8_t *q = layer_rgba + (size_t)i * 4;
+        q[0] = p[0]; q[1] = p[1]; q[2] = p[2];
+        q[3] = p[0] == 0xFF && p[1] == 0x00 && p[2] == 0xFF ? 0 : 255;
+    }
+    layer_geom(w, h, &s, &ox, &oy);
+    if (use_gl) { gl_layer(layer_rgba, SCREEN_W, SCREEN_H, w, h, ox, oy, s, LAYER_DIM); return; }
+    SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(ren, 0, 0, 16, LAYER_DIM);
+    SDL_RenderFillRect(ren, NULL);
+    if (!layer_tex) {
+        layer_tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, SCREEN_W, SCREEN_H);
+        if (!layer_tex) return;
+        SDL_SetTextureBlendMode(layer_tex, SDL_BLENDMODE_BLEND);
+        SDL_SetTextureScaleMode(layer_tex, SDL_ScaleModeNearest);
+    }
+    SDL_UpdateTexture(layer_tex, NULL, layer_rgba, SCREEN_W * 4);
+    d.x = ox; d.y = oy; d.w = SCREEN_W * s; d.h = SCREEN_H * s;
+    SDL_RenderCopy(ren, layer_tex, NULL, &d);
+}
+
 /* What the window shows while the game runs: the picture, with the counter in the corner when `fps` is on (and then
  * drawn into fb_show, so the picture itself is never touched), or the menu over it. Sets show_w to its width. */
 static const uint8_t *shown_frame(void) {
     char t[24];
     show_w = fb_front_w;
+    if (!menu_in_picture && (slot_open || menu_open)) return fb_front; /* the menu is a layer of the window (layer_draw), not part of the picture */
     if (slot_open) { overlay_compose(slot_draw); return fb_show; }
     if (menu_open) { menu_compose(); return fb_show; }
     if (!cfg.eff.v[O_FPS] && st_toast_left <= 0) return fb_front;
@@ -2246,19 +2299,13 @@ static void ui_key(SDL_Scancode sc) {
 /* The mouse (desktop): a left click on the menu or on the slot picker does what a tap does on the phone. Window points go to the 256x224
  * picture of the menu the same way as for a finger, without the touch controls (they are not there with a mouse). */
 static void mouse_click(int mx, int my) {
-    int w, h, ww, wh, px, py, lines = view_lines(), e = (show_w - SCREEN_W) / 2, cx, cy;
-    Rect r;
+    int w, h, ww, wh, px, py, cx, cy;
     touch_win(&w, &h);
     SDL_GetWindowSize(win, &ww, &wh);
     if (ww <= 0 || wh <= 0) return;
     px = (int)((long)mx * w / ww);
     py = (int)((long)my * h / wh);
-    r = view_rect(w, h, cfg.eff.v[O_ASPECT], cfg.eff.v[O_SCALING], lines, show_w);
-    if (px < r.x || py < r.y || px >= r.x + r.w || py >= r.y + r.h) cx = cy = -1;
-    else {
-        cx = (int)((long)(px - r.x) * show_w / r.w) - e;
-        cy = (int)((long)(py - r.y) * lines / r.h) + cfg.eff.v[O_OVERSCAN];
-    }
+    layer_pt(px, py, w, h, &cx, &cy);
     if (slot_open) {
         int sl;
         if (cx < 0) { slot_close(); return; }
@@ -2809,6 +2856,7 @@ int main(int argc, char **argv) {
             if (o == O_COUNT || !opt_parse(&opt_defs[o], eq + 1, &v)) { bad = 1; break; }
             cli_set[o] = 1; cli_val[o] = v;
         }
+        else if (!strcmp(argv[i], "--menu-in-picture")) menu_in_picture = 1;
         else if (!strcmp(argv[i], "--menu-shot") && i + 1 < argc) menu_shot_path = argv[++i];
         else if (!strcmp(argv[i], "--slot-shot") && i + 1 < argc) { menu_shot_path = argv[++i]; menu_shot_slot = 1; }
         else if (!strcmp(argv[i], "--menu-page") && i + 1 < argc) { menu_shot_page = atoi(argv[++i]); if (menu_shot_page < 0 || menu_shot_page >= tab_count()) { bad = 1; break; } }

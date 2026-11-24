@@ -10,6 +10,37 @@
 #define GLAPI_CALL APIENTRY
 #else
 #define GLAPI_CALL
+/* The layer of the menu over what gl_draw() drew: the whole target dimmed (`dim`, 0 to 255, of black) and then the picture
+ * `rgba` (lw x lh, alpha 0 where the game shows through) magnified by `scale` with its corner at (ox, oy). */
+static void gl_layer(const uint8_t *rgba, int lw, int lh, int aw, int ah, int ox, int oy, int scale, int dim) {
+    if (!gl_layer_prog) return;
+    gl.Viewport(0, 0, aw, ah);
+    gl.Enable(GL_BLEND_);
+    gl.BlendFunc(GL_SRC_ALPHA_, GL_ONE_MINUS_SRC_ALPHA_);
+    gl.UseProgram(gl_layer_prog);
+    gl.BindVertexArray(gl_vao);
+    gl.Uniform4f(gl_layer_u_rect, -1.0f, -1.0f, 1.0f, 1.0f);
+    gl.Uniform4f(gl_layer_u_fx, 0.0f, 0.0f, 0.0f, dim / 255.0f);
+    gl.DrawArrays(GL_TRIANGLE_STRIP_, 0, 4);
+    gl.BindTexture(GL_TEXTURE_2D_, gl_layer_tex);
+    gl.PixelStorei(GL_UNPACK_ALIGNMENT_, 1);
+    if (gl_layer_w != lw || gl_layer_h != lh) {
+        gl.TexParameteri(GL_TEXTURE_2D_, GL_TEXTURE_MIN_FILTER_, GL_NEAREST_);
+        gl.TexParameteri(GL_TEXTURE_2D_, GL_TEXTURE_MAG_FILTER_, GL_NEAREST_);
+        gl.TexParameteri(GL_TEXTURE_2D_, GL_TEXTURE_WRAP_S_, GL_CLAMP_TO_EDGE_);
+        gl.TexParameteri(GL_TEXTURE_2D_, GL_TEXTURE_WRAP_T_, GL_CLAMP_TO_EDGE_);
+        gl.TexImage2D(GL_TEXTURE_2D_, 0, GL_RGBA8_, lw, lh, 0, GL_RGBA_, GL_UNSIGNED_BYTE_, rgba);
+        gl_layer_w = lw; gl_layer_h = lh;
+    } else {
+        gl.TexSubImage2D(GL_TEXTURE_2D_, 0, 0, 0, lw, lh, GL_RGBA_, GL_UNSIGNED_BYTE_, rgba);
+    }
+    gl.Uniform1i(gl_layer_u_tex, 0);
+    gl.Uniform4f(gl_layer_u_fx, 0.0f, 0.0f, 0.0f, -1.0f);
+    gl.Uniform4f(gl_layer_u_rect, 2.0f * ox / aw - 1.0f, 1.0f - 2.0f * (oy + lh * scale) / ah, 2.0f * (ox + lw * scale) / aw - 1.0f, 1.0f - 2.0f * oy / ah);
+    gl.DrawArrays(GL_TRIANGLE_STRIP_, 0, 4);
+    gl.Disable(GL_BLEND_);
+}
+
 #endif
 
 typedef unsigned int GLenum_t;
@@ -25,7 +56,8 @@ enum {
     GL_LINEAR_ = 0x2601, GL_CLAMP_TO_EDGE_ = 0x812F, GL_UNPACK_ALIGNMENT_ = 0x0CF5, GL_PACK_ALIGNMENT_ = 0x0D05,
     GL_TRIANGLE_STRIP_ = 0x0005, GL_VERTEX_SHADER_ = 0x8B31, GL_FRAGMENT_SHADER_ = 0x8B30, GL_COMPILE_STATUS_ = 0x8B81,
     GL_LINK_STATUS_ = 0x8B82, GL_FRAMEBUFFER_ = 0x8D40, GL_COLOR_ATTACHMENT0_ = 0x8CE0, GL_FRAMEBUFFER_COMPLETE_ = 0x8CD5,
-    GL_VERSION_ = 0x1F02, GL_BLEND_ = 0x0BE2
+    GL_VERSION_ = 0x1F02, GL_BLEND_ = 0x0BE2, GL_NEAREST_ = 0x2600, GL_RGBA_ = 0x1908, GL_RGBA8_ = 0x8058,
+    GL_SRC_ALPHA_ = 0x0302, GL_ONE_MINUS_SRC_ALPHA_ = 0x0303
 };
 
 /* the GL functions in use; `gl.name` is the pointer of glName */
@@ -34,6 +66,8 @@ static struct {
     void (GLAPI_CALL *Clear)(GLuint_t);
     void (GLAPI_CALL *Viewport)(GLint_t, GLint_t, GLsizei_t, GLsizei_t);
     void (GLAPI_CALL *Disable)(GLenum_t);
+    void (GLAPI_CALL *Enable)(GLenum_t);
+    void (GLAPI_CALL *BlendFunc)(GLenum_t, GLenum_t);
     void (GLAPI_CALL *GenTextures)(GLsizei_t, GLuint_t *);
     void (GLAPI_CALL *DeleteTextures)(GLsizei_t, const GLuint_t *);
     void (GLAPI_CALL *BindTexture)(GLenum_t, GLuint_t);
@@ -143,7 +177,18 @@ static const char *const gl_fs_src =
     "    o_color = vec4(col * edge, 1.0);\n"
     "}\n";
 
-static GLuint_t gl_prog, gl_vao, gl_pic_tex;
+/* The fragment shader of the layer of the menu: its picture (RGBA) as it is, or a flat colour (the dimming of the game). */
+static const char *const gl_layer_fs_src =
+    "#version 330 core\n"
+    "in vec2 v_uv;\n"
+    "out vec4 o_color;\n"
+    "uniform sampler2D u_tex;\n"
+    "uniform vec4 u_fx;\n"  /* a flat colour when its alpha is not negative */
+    "void main() { o_color = u_fx.a >= 0.0 ? u_fx : texture(u_tex, v_uv); }\n";
+
+static GLuint_t gl_prog, gl_vao, gl_pic_tex, gl_layer_prog, gl_layer_tex;
+static GLint_t gl_layer_u_rect, gl_layer_u_fx, gl_layer_u_tex;
+static int gl_layer_w, gl_layer_h;
 static GLint_t gl_u_rect, gl_u_src, gl_u_tsz, gl_u_out, gl_u_fx, gl_u_tex;
 static int gl_pic_w;
 
@@ -151,7 +196,7 @@ static int gl_pic_w;
 static int gl_load(void) {
     int bad = 0;
 #define GLF(name) do { *(void **)&gl.name = SDL_GL_GetProcAddress("gl" #name); if (!gl.name) { fprintf(stderr, "warning: shader: OpenGL has no gl%s\n", #name); bad = 1; } } while (0)
-    GLF(ClearColor); GLF(Clear); GLF(Viewport); GLF(Disable); GLF(GenTextures); GLF(DeleteTextures); GLF(BindTexture);
+    GLF(ClearColor); GLF(Clear); GLF(Viewport); GLF(Disable); GLF(Enable); GLF(BlendFunc); GLF(GenTextures); GLF(DeleteTextures); GLF(BindTexture);
     GLF(TexImage2D); GLF(TexSubImage2D); GLF(TexParameteri); GLF(PixelStorei); GLF(DrawArrays); GLF(ReadPixels); GLF(GetString);
     GLF(CreateShader); GLF(ShaderSource); GLF(CompileShader); GLF(GetShaderiv); GLF(GetShaderInfoLog); GLF(DeleteShader);
     GLF(CreateProgram); GLF(AttachShader); GLF(LinkProgram); GLF(GetProgramiv); GLF(GetProgramInfoLog); GLF(UseProgram); GLF(DeleteProgram);
@@ -209,6 +254,25 @@ static int gl_setup(void) {
     gl_u_out = gl.GetUniformLocation(gl_prog, "u_out");
     gl_u_fx = gl.GetUniformLocation(gl_prog, "u_fx");
     gl_u_tex = gl.GetUniformLocation(gl_prog, "u_tex");
+    /* the layer of the menu is optional: without its program the menu is not drawn, the game still is */
+    vs = gl_compile(GL_VERTEX_SHADER_, gl_vs_src);
+    fs = vs ? gl_compile(GL_FRAGMENT_SHADER_, gl_layer_fs_src) : 0;
+    if (vs && fs) {
+        gl_layer_prog = gl.CreateProgram();
+        gl.AttachShader(gl_layer_prog, vs);
+        gl.AttachShader(gl_layer_prog, fs);
+        gl.LinkProgram(gl_layer_prog);
+        gl.GetProgramiv(gl_layer_prog, GL_LINK_STATUS_, &ok);
+        if (!ok) { gl.DeleteProgram(gl_layer_prog); gl_layer_prog = 0; }
+        else {
+            gl_layer_u_rect = gl.GetUniformLocation(gl_layer_prog, "u_rect");
+            gl_layer_u_fx = gl.GetUniformLocation(gl_layer_prog, "u_fx");
+            gl_layer_u_tex = gl.GetUniformLocation(gl_layer_prog, "u_tex");
+            gl.GenTextures(1, &gl_layer_tex);
+        }
+    }
+    if (vs) gl.DeleteShader(vs);
+    if (fs) gl.DeleteShader(fs);
     gl.GenVertexArrays(1, &gl_vao);
     gl.GenTextures(1, &gl_pic_tex);
     gl_pic_w = 0;
@@ -220,7 +284,10 @@ static void gl_teardown(void) {
     if (gl_prog) gl.DeleteProgram(gl_prog);
     if (gl_vao) gl.DeleteVertexArrays(1, &gl_vao);
     if (gl_pic_tex) gl.DeleteTextures(1, &gl_pic_tex);
-    gl_prog = gl_vao = gl_pic_tex = 0;
+    if (gl_layer_prog) gl.DeleteProgram(gl_layer_prog);
+    if (gl_layer_tex) gl.DeleteTextures(1, &gl_layer_tex);
+    gl_prog = gl_vao = gl_pic_tex = gl_layer_prog = gl_layer_tex = 0;
+    gl_layer_w = gl_layer_h = 0;
 }
 
 /* Draws the picture `fb` (pw x SCREEN_H, RGB24) into the target of the current framebuffer, of aw x ah pixels, in the
@@ -253,6 +320,37 @@ static void gl_draw(const uint8_t *fb, int pw, int ph, int aw, int ah, int rx, i
     gl.Uniform4f(gl_u_fx, beam / 100.0f, mask / 100.0f, curve / 100.0f, glow / 100.0f);
     gl.BindVertexArray(gl_vao);
     gl.DrawArrays(GL_TRIANGLE_STRIP_, 0, 4);
+}
+
+/* The layer of the menu over what gl_draw() drew: the whole target dimmed (`dim`, 0 to 255, of black) and then the picture
+ * `rgba` (lw x lh, alpha 0 where the game shows through) magnified by `scale` with its corner at (ox, oy). */
+static void gl_layer(const uint8_t *rgba, int lw, int lh, int aw, int ah, int ox, int oy, int scale, int dim) {
+    if (!gl_layer_prog) return;
+    gl.Viewport(0, 0, aw, ah);
+    gl.Enable(GL_BLEND_);
+    gl.BlendFunc(GL_SRC_ALPHA_, GL_ONE_MINUS_SRC_ALPHA_);
+    gl.UseProgram(gl_layer_prog);
+    gl.BindVertexArray(gl_vao);
+    gl.Uniform4f(gl_layer_u_rect, -1.0f, -1.0f, 1.0f, 1.0f);
+    gl.Uniform4f(gl_layer_u_fx, 0.0f, 0.0f, 0.0f, dim / 255.0f);
+    gl.DrawArrays(GL_TRIANGLE_STRIP_, 0, 4);
+    gl.BindTexture(GL_TEXTURE_2D_, gl_layer_tex);
+    gl.PixelStorei(GL_UNPACK_ALIGNMENT_, 1);
+    if (gl_layer_w != lw || gl_layer_h != lh) {
+        gl.TexParameteri(GL_TEXTURE_2D_, GL_TEXTURE_MIN_FILTER_, GL_NEAREST_);
+        gl.TexParameteri(GL_TEXTURE_2D_, GL_TEXTURE_MAG_FILTER_, GL_NEAREST_);
+        gl.TexParameteri(GL_TEXTURE_2D_, GL_TEXTURE_WRAP_S_, GL_CLAMP_TO_EDGE_);
+        gl.TexParameteri(GL_TEXTURE_2D_, GL_TEXTURE_WRAP_T_, GL_CLAMP_TO_EDGE_);
+        gl.TexImage2D(GL_TEXTURE_2D_, 0, GL_RGBA8_, lw, lh, 0, GL_RGBA_, GL_UNSIGNED_BYTE_, rgba);
+        gl_layer_w = lw; gl_layer_h = lh;
+    } else {
+        gl.TexSubImage2D(GL_TEXTURE_2D_, 0, 0, 0, lw, lh, GL_RGBA_, GL_UNSIGNED_BYTE_, rgba);
+    }
+    gl.Uniform1i(gl_layer_u_tex, 0);
+    gl.Uniform4f(gl_layer_u_fx, 0.0f, 0.0f, 0.0f, -1.0f);
+    gl.Uniform4f(gl_layer_u_rect, 2.0f * ox / aw - 1.0f, 1.0f - 2.0f * (oy + lh * scale) / ah, 2.0f * (ox + lw * scale) / aw - 1.0f, 1.0f - 2.0f * oy / ah);
+    gl.DrawArrays(GL_TRIANGLE_STRIP_, 0, 4);
+    gl.Disable(GL_BLEND_);
 }
 
 #endif

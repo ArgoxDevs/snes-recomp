@@ -3274,7 +3274,7 @@ fn present_menu_shot(name: &str, opts: &[&str]) -> Option<Vec<u8>> {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("p.png").to_string_lossy().into_owned();
-    let mut args = vec!["rom.sfc", "--no-window", "--frames", "8", "--frame-blocks", "20", "--menu-keys", "F1,W,W,W", "--present-shot", &path, "--present-size", "768x672", "--opt", "scaling=fit"];
+    let mut args = vec!["rom.sfc", "--no-window", "--frames", "8", "--frame-blocks", "20", "--menu-in-picture", "--menu-keys", "F1,W,W,W", "--present-shot", &path, "--present-size", "768x672", "--opt", "scaling=fit"];
     for o in opts {
         args.extend(["--opt", o]);
     }
