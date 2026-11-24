@@ -4,7 +4,7 @@
 
 Please **do not open a public issue** for a security problem. Use GitHub's private reporting instead:
 **Security → Report a vulnerability** in this repository
-(<https://github.com/AlekayDevs/snes-recomp/security/advisories/new>).
+(<https://github.com/ArgoxDevs/snes-recomp/security/advisories/new>).
 
 No abras un issue público para un problema de seguridad: usa el aviso privado de GitHub (enlace de arriba).
 
@@ -18,7 +18,7 @@ Useful details: version, system, what you did, what happened, and whether it nee
 
 ## Supported versions / Versiones con soporte
 
-Only the latest release of each game built with the engine, for example [`alttp-recomp`](https://github.com/AlekayDevs/alttp-recomp/releases/latest).
+Only the latest release of each game built with the engine, for example [`alttp-recomp`](https://github.com/ArgoxDevs/alttp-recomp/releases/latest).
 
 ## Out of scope / Fuera de alcance
 
