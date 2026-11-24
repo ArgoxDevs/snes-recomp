@@ -335,7 +335,10 @@ pub mod ffi {
             Some(i) => match check(Path::new(&d), &i, force != 0) {
                 Outcome::UpToDate => SnesUpd { kind: 0, a: cs(""), b: cs("") },
                 Outcome::Available { tag, page } => SnesUpd { kind: 1, a: cs(&tag), b: cs(&page) },
-                Outcome::Skipped => SnesUpd { kind: 2, a: cs(""), b: cs("") },
+                Outcome::Skipped => {
+                    let st = load_settings(Path::new(&d));
+                    SnesUpd { kind: 2, a: cs(&st.tag), b: cs(&st.page) }
+                }
                 Outcome::Failed(m) => SnesUpd { kind: 3, a: cs(&m), b: cs("") },
             },
         };

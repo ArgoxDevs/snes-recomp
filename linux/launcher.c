@@ -57,7 +57,7 @@ static char exe_path[4096], exe_dir[4096], assets[4096], data_dir[4096];
 enum {
     S_CHECK_UPDATES, S_PLAY, S_CHOOSE, S_CHANGE, S_UPDATE, S_NOT_NOW, S_SKIP, S_NEWVER, S_INSTALLING, S_UPDATED, S_UPDATED_STATUS,
     S_UPD_FAIL, S_UPD_FAIL_STATUS, S_NO_CHECK, S_SKIPPED, S_UPTODATE, S_SEARCHING, S_PICK_MSG, S_NO_DIALOG, S_CANT_READ, S_WRONG_ROM,
-    S_PREP1, S_PREP2, S_BAD_ROM, S_NO_COMPILE, S_NO_LINK, S_DLG_TITLE, S_DLG_FILTER, S_DLG_ALL, S_N
+    S_PREP1, S_PREP2, S_BAD_ROM, S_NO_COMPILE, S_NO_LINK, S_DLG_TITLE, S_DLG_FILTER, S_DLG_ALL, S_LICENCES, S_CHECK_NOW, S_CLOSE, S_LIC_INTRO, S_LIC_MISSING, S_N
 };
 static const char *const strs[S_N][2] = {
     [S_CHECK_UPDATES] = {"Check for updates (uses the Internet)", "Buscar actualizaciones (usa Internet)"},
@@ -95,6 +95,12 @@ static const char *const strs[S_N][2] = {
     [S_DLG_TITLE] = {"Choose your Zelda: A Link to the Past ROM (USA)", "Elige tu ROM de Zelda: A Link to the Past (USA)"},
     [S_DLG_FILTER] = {"SNES ROM", "ROM de SNES"},
     [S_DLG_ALL] = {"All files", "Todos"},
+    [S_LICENCES] = {"LICENCES", "LICENCIAS"},
+    [S_CHECK_NOW] = {"CHECK NOW", "BUSCAR AHORA"},
+    [S_CLOSE] = {"CLOSE", "CERRAR"},
+    [S_LIC_INTRO] = {"This program is free software. It carries TinyCC (LGPL 2.1, as the separate file lib/libtcc.so, which can be replaced) and SDL2 (zlib). Your ROM is not part of it and is never copied or sent anywhere.",
+                     "Este programa es software libre. Lleva TinyCC (LGPL 2.1, como el fichero aparte lib/libtcc.so, que se puede sustituir) y SDL2 (zlib). Tu ROM no forma parte de él y nunca se copia ni se envía a ningún sitio."},
+    [S_LIC_MISSING] = {"The license files were not found next to the program.", "No se encuentran los ficheros de licencia junto al programa."},
 };
 static int lang;                      /* 0 = inglés, 1 = español */
 static char lang_file[4096 + 16];
@@ -192,6 +198,8 @@ static const Rect btn_other = {195, 320, 250, 38};
 static const Rect btn_third = {215, 364, 210, 26};
 static const Rect chk_rect = {34, 362, 290, 26};
 static const Rect btn_lang = {WIN_W - 98, 22, 66, 22};   /* globo y código del idioma, arriba a la derecha */
+static const Rect btn_lic = {32, 22, 150, 22};            /* licencias, arriba a la izquierda */
+static const Rect btn_check = {350, 360, 216, 26};        /* buscar actualizaciones ahora, abajo a la derecha */
 
 /* lo que el lanzador sabe de las actualizaciones */
 static int upd_ok, upd_on;          /* esta instalación se actualiza sola / la casilla está marcada */
@@ -235,7 +243,7 @@ static void triangle(int cx, int top, int w, int h) {
 }
 
 /* el fondo: piedra verde oscura con un damero tenue, marco dorado biselado con esquinas, y la Trifuerza */
-static void backdrop(void) {
+static void backdrop_ex(int logo) {
     int x, y, i;
     for (y = 0; y < WIN_H; y++)
         for (x = 0; x < WIN_W; x++) {
@@ -256,10 +264,13 @@ static void backdrop(void) {
         for (d = 0; d < 7; d++) cv_rect(&cv, cx - (6 - d), cy - d + 0, 2 * (6 - d) + 1, 1, d < 2 ? TC_GOLD_HI : TC_GOLD);
         for (d = 0; d < 7; d++) cv_rect(&cv, cx - (6 - d), cy + d, 2 * (6 - d) + 1, 1, d < 2 ? TC_GOLD : TC_GOLD_LO);
     }
+    if (!logo) return;
     triangle(WIN_W / 2, 30, 26, 22);
     triangle(WIN_W / 2 - 14, 54, 26, 22);
     triangle(WIN_W / 2 + 14, 54, 26, 22);
 }
+
+static void backdrop(void) { backdrop_ex(1); }
 
 /* el botón de idioma: la placa con el código del idioma actual y un globo (círculo, ecuador y meridiano) a la izquierda */
 static void lang_button(int mx, int my) {
@@ -272,6 +283,8 @@ static void lang_button(int mx, int my) {
                 cv_put(&cv, cx + x, cy + y, TC_TEXT);
         }
 }
+
+static void present(void);
 
 /* pantalla: mensaje (líneas separadas por \n) y botones (NULL = no hay) */
 static void draw(const char *msg, uint32_t msg_color, const char *main_label, const char *other_label, int mx, int my) {
@@ -303,6 +316,7 @@ static void draw(const char *msg, uint32_t msg_color, const char *main_label, co
         timg_free(&im);
     }
     if (main_label) lang_button(mx, my);
+    if (main_label && g_footer) button(btn_lic, TR(S_LICENCES), 0, inside(btn_lic, mx, my));
     if (upd_ok && g_footer) { /* casilla de «buscar actualizaciones», estado y versión */
         TImg box = timg_new(14, 14);
         TBox bb = {14, 14};
@@ -319,8 +333,14 @@ static void draw(const char *msg, uint32_t msg_color, const char *main_label, co
         text_draw(&cv, chk_rect.x + 22, chk_rect.y + 5, TR(S_CHECK_UPDATES), inside(chk_rect, mx, my) ? UI_GOLD : 0xC8D8B8, 0);
         snprintf(v, sizeof v, "v%s", upd_version);
         text_right(&cv, WIN_W - 28, chk_rect.y + 5, v, UI_DIM);
-        if (upd_status[0]) text_right(&cv, WIN_W - 70, chk_rect.y + 5, upd_status, UI_GOLD);
+        if (upd_status[0]) text_center(&cv, 0, WIN_W, 232, upd_status, UI_GOLD);
+        button(btn_check, TR(S_CHECK_NOW), 0, inside(btn_check, mx, my));
     }
+    present();
+}
+
+/* vuelca el fotograma si se pide y lo pone en la ventana */
+static void present(void) {
     { /* SNES_PORT_SHOT=ruta: vuelca este fotograma (PPM) para hacer capturas y pruebas sin pantalla (SDL_VIDEODRIVER=dummy) */
         const char *shot = getenv("SNES_PORT_SHOT");
         FILE *f = shot && *shot ? fopen(shot, "wb") : NULL;
@@ -330,6 +350,94 @@ static void draw(const char *msg, uint32_t msg_color, const char *main_label, co
     SDL_RenderClear(ren);
     SDL_RenderCopy(ren, tex, NULL, NULL);
     SDL_RenderPresent(ren);
+}
+
+/* ---- licencias: el texto de assets/licenses/*, partido en líneas del ancho de la ventana y con desplazamiento ---- */
+
+static char **lic_line;
+static int lic_n, lic_scroll;
+#define LIC_VISIBLE 20
+#define LIC_STEP 12
+
+static void lic_add(const char *s, size_t n) {
+    char *l = malloc(n + 1);
+    if (!l) return;
+    memcpy(l, s, n);
+    l[n] = 0;
+    lic_line = realloc(lic_line, (size_t)(lic_n + 1) * sizeof *lic_line);
+    lic_line[lic_n++] = l;
+}
+
+/* el texto, línea a línea, partido por palabras para que quepa en la ventana */
+static void lic_wrap(const char *src) {
+    const char *p = src;
+    while (*p) {
+        size_t n = strcspn(p, "\r\n"), start = 0;
+        if (n == 0) lic_add("", 0);
+        while (start < n) {
+            char tmp[512];
+            size_t len = n - start, cut, brk;
+            if (len > sizeof tmp - 1) len = sizeof tmp - 1;
+            memcpy(tmp, p + start, len);
+            tmp[len] = 0;
+            if (text_w(tmp) <= WIN_W - 100) { lic_add(tmp, len); start += len; continue; }
+            for (cut = len; cut > 1; cut--) { /* el prefijo más largo que cabe */
+                tmp[cut] = 0;
+                if (text_w(tmp) <= WIN_W - 100) break;
+            }
+            for (brk = cut; brk > 0 && p[start + brk] != ' '; brk--) {} /* cortado en el último espacio, o a pelo */
+            if (brk == 0) brk = cut;
+            lic_add(p + start, brk);
+            start += brk;
+            while (start < n && p[start] == ' ') start++;
+        }
+        p += n;
+        if (*p == '\r') p++;
+        if (*p == '\n') p++;
+    }
+}
+
+static void lic_load(void) {
+    static const char *const files[] = {"NOTICE.txt", "libtcc-LGPL-2.1.txt", "SDL2-zlib.txt", NULL};
+    char path[4096];
+    int i, found = 0;
+    while (lic_n) free(lic_line[--lic_n]);
+    lic_scroll = 0;
+    lic_wrap(TR(S_LIC_INTRO));
+    for (i = 0; files[i]; i++) {
+        char *t;
+        snprintf(path, sizeof path, "%s/licenses/%s", assets, files[i]);
+        if (!(t = read_file(path, NULL))) continue;
+        found = 1;
+        lic_add("", 0);
+        snprintf(path, sizeof path, "---- %s ----", files[i]);
+        lic_add(path, strlen(path));
+        lic_add("", 0);
+        lic_wrap(t);
+        free(t);
+    }
+    if (!found) { lic_add("", 0); lic_wrap(TR(S_LIC_MISSING)); }
+}
+
+static void lic_scroll_by(int lines) {
+    int max = lic_n - LIC_VISIBLE;
+    lic_scroll += lines;
+    if (lic_scroll > max) lic_scroll = max;
+    if (lic_scroll < 0) lic_scroll = 0;
+}
+
+static void draw_licences(int mx, int my) {
+    int i;
+    char more[16];
+    backdrop_ex(0);
+    text_draw2x(&cv, (WIN_W - text_w2x(TR(S_LICENCES))) / 2, 30, TR(S_LICENCES), TC_GOLD_HI, TC_SHADOW);
+    for (i = 0; i < LIC_VISIBLE && lic_scroll + i < lic_n; i++) text_draw(&cv, 40, 62 + i * LIC_STEP, lic_line[lic_scroll + i], 0xC8D8B8, 0);
+    if (lic_n > LIC_VISIBLE) { /* dónde se está dentro del texto */
+        snprintf(more, sizeof more, "%d%%", lic_scroll * 100 / (lic_n - LIC_VISIBLE));
+        text_right(&cv, WIN_W - 28, 38, more, UI_DIM);
+    }
+    button(btn_other, TR(S_CLOSE), 1, inside(btn_other, mx, my));
+    present();
 }
 
 /* el diálogo de archivos del sistema (zenity o kdialog); NULL si el usuario cancela o no hay ninguno */
@@ -618,9 +726,10 @@ int main(int argc, char **argv) {
                     snprintf(upd_status, sizeof upd_status, "%s", TR(S_UPD_FAIL_STATUS));
                 }
                 mode = 0;
-            } else if (snes_upd_kind(r) == 1) {
+            } else if (snes_upd_kind(r) == 1 || (was == 2 && snes_upd_kind(r) == 2 && snes_upd_a(r)[0])) { /* a mano, la omitida se vuelve a ofrecer */
                 snprintf(new_tag, sizeof new_tag, "%s", snes_upd_a(r));
                 snprintf(new_page, sizeof new_page, "%s", snes_upd_b(r));
+                upd_status[0] = 0;
                 mode = 1;
             } else if (was == 2) {
                 if (snes_upd_kind(r) == 3) snprintf(upd_status, sizeof upd_status, "%s", TR(S_NO_CHECK));
@@ -629,7 +738,9 @@ int main(int argc, char **argv) {
             snes_upd_free(r);
         }
         g_third = NULL; g_footer = 1;
-        if (mode == 1) { /* hay una versión nueva */
+        if (mode == 2) { /* licencias */
+            draw_licences(mx, my);
+        } else if (mode == 1) { /* hay una versión nueva */
             snprintf(shown, sizeof shown, TR(S_NEWVER), new_tag, upd_version);
             main_label = TR(S_UPDATE); other_label = TR(S_NOT_NOW); g_third = TR(S_SKIP); g_footer = 0;
             draw(shown, UI_TEXT, main_label, other_label, mx, my);
@@ -651,21 +762,41 @@ int main(int argc, char **argv) {
             switch (ev.type) {
             case SDL_QUIT: return 0;
             case SDL_KEYDOWN:
+                if (mode == 2) { /* licencias: Esc cierra, las flechas desplazan */
+                    switch (ev.key.keysym.sym) {
+                    case SDLK_ESCAPE: case SDLK_RETURN: case SDLK_KP_ENTER: mode = 0; break;
+                    case SDLK_UP: lic_scroll_by(-1); break;
+                    case SDLK_DOWN: lic_scroll_by(1); break;
+                    case SDLK_PAGEUP: lic_scroll_by(-LIC_VISIBLE + 1); break;
+                    case SDLK_PAGEDOWN: lic_scroll_by(LIC_VISIBLE - 1); break;
+                    case SDLK_HOME: lic_scroll_by(-lic_n); break;
+                    case SDLK_END: lic_scroll_by(lic_n); break;
+                    }
+                    break;
+                }
                 if (ev.key.keysym.sym == SDLK_ESCAPE) return 0;
                 if (ev.key.keysym.sym == SDLK_l && job != 3) toggle_lang = 1;
                 if (job == 3 || mode == 1) break;
                 if (ev.key.keysym.sym == SDLK_RETURN || ev.key.keysym.sym == SDLK_KP_ENTER) act = 1;
                 break;
             case SDL_MOUSEMOTION: mx = ev.motion.x; my = ev.motion.y; break;
+            case SDL_MOUSEWHEEL: if (mode == 2) lic_scroll_by(-ev.wheel.y * 3); break;
             case SDL_MOUSEBUTTONDOWN:
                 if (ev.button.button == SDL_BUTTON_LEFT) {
                     /* con SDL_RenderSetLogicalSize las coordenadas ya vienen en el espacio lógico */
                     if (job == 3) break;
+                    if (mode == 2) { if (inside(btn_other, ev.button.x, ev.button.y)) mode = 0; break; }
                     if (inside(btn_lang, ev.button.x, ev.button.y)) { toggle_lang = 1; break; }
                     if (mode == 1) {
                         if (inside(btn_main, ev.button.x, ev.button.y)) { mode = 0; start_job(3, 0); }
                         else if (inside(btn_other, ev.button.x, ev.button.y)) mode = 0;
                         else if (inside(btn_third, ev.button.x, ev.button.y)) { snes_upd_skip(data_dir, new_tag); mode = 0; }
+                        break;
+                    }
+                    if (inside(btn_lic, ev.button.x, ev.button.y)) { lic_load(); mode = 2; break; }
+                    if (upd_ok && !job && inside(btn_check, ev.button.x, ev.button.y)) {
+                        snprintf(upd_status, sizeof upd_status, "%s", TR(S_SEARCHING));
+                        start_job(2, 1);
                         break;
                     }
                     if (upd_ok && inside(chk_rect, ev.button.x, ev.button.y)) {
