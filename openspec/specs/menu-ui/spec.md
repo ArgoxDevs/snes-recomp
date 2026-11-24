@@ -49,3 +49,10 @@ El menú SHALL poder dibujarse sin ventana para las capturas de prueba (`--menu-
 #### Scenario: Captura determinista
 - **WHEN** se genera dos veces la captura de la misma pestaña con el mismo estado
 - **THEN** los dos PNG son idénticos byte a byte
+
+### Requirement: El menú es una capa de la ventana a escala entera
+El menú y el selector de ranuras SHALL dibujarse como una capa sobre la ventana, después de la imagen y de sus efectos (filtro, escalado, rejilla, shader), de modo que ninguno los altere; la capa MUST ampliarse por un factor entero (el menor de alto/270 y ancho/256, mínimo 1) con vecino más cercano, centrada, y el juego MUST verse atenuado alrededor. El ratón y el toque MUST convertir el punto de la ventana a la capa con la misma geometría, y un clic fuera del panel MUST cerrar el menú. La fila con el cursor SHOULD mostrar una línea que diga qué hace.
+
+#### Scenario: Shader CRT
+- **WHEN** el shader CRT está activo y se abre el menú
+- **THEN** el menú se ve sin curvatura, máscara ni resplandor
