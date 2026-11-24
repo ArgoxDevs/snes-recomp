@@ -1509,10 +1509,11 @@ static void ctl_detail(int player, int s) {
 }
 
 /* One row. `kind`: 0 an action, 1 a value with arrows (`dimL`/`dimR` dim an arrow), 2 a bar at `pct`, 3 only text. */
+static const char *menu_desc_label; /* the label of the row with the cursor in this frame (set by menu_row) */
 static void menu_row(int i, int on, const char *label, int kind, const char *value, int pct, int dimL, int dimR) {
     int y = ROW_Y + i * ROW_H, bob = on ? (menu_tick / 10) % 2 : 0;
     char fit[96];
-    if (on) cv_rect(&cv, ROW_X, y - 2, ROW_W, ROW_H - 1, 0x34489Cu);
+    if (on) { cv_rect(&cv, ROW_X, y - 2, ROW_W, ROW_H - 1, 0x34489Cu); menu_desc_label = label; }
     if (on) ui_cursor(&cv, ROW_X + 3 + bob, y);
     text_draw(&cv, ROW_X + 16, y, tr(label), on ? UI_GOLD : UI_TEXT, 1);
     if (kind == 1) {
@@ -1567,6 +1568,7 @@ static void menu_draw(const uint8_t *fb) {
     if (touch_on) { mm_draw(fb); return; }
     int i, t, x, n = menu_count(menu_tab), s = menu_sel[menu_tab];
     const char *help;
+    menu_desc_label = NULL;
     ui_backdrop(&cv, fb);
     ui_panel(&cv, PX, PY, PW, DPH);
     text_draw2x(&cv, PX + (PW - text_w2x(tr("OPTIONS"))) / 2, PY + 7, tr("OPTIONS"), UI_GOLD, UI_SHADOW);
@@ -1645,6 +1647,15 @@ static void menu_draw(const uint8_t *fb) {
         }
     }
     if (menu_msg[0]) { text_fit(line, sizeof line, menu_msg, PW - 24); text_center(&cv, PX, PW, PY + DPH - 26, line, UI_WARN); }
+    if (!menu_msg[0] && menu_desc_label && menu_capture < 0) {
+        int d;
+        for (d = 0; d < MENU_DESC_COUNT; d++)
+            if (!strcmp(menu_descs[d].label, menu_desc_label)) {
+                text_fit(line, sizeof line, tr(menu_descs[d].desc), PW - 24);
+                text_center(&cv, PX, PW, PY + DPH - 28, line, UI_TEXT);
+                break;
+            }
+    }
     ui_rule(&cv, PX + 10, PY + DPH - 17, PW - 20);
     help = tr(menu_capture >= 0 ? "Press the key or button   Esc: cancel"
          : menu_by_pad ? "L/R: tabs   A: select   B: close"

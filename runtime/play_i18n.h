@@ -10,6 +10,36 @@
 typedef struct { const char *en, *es; } I18n;
 
 static const I18n i18n_table[] = {
+    /* what a row does (the line above the foot of the menu, for the row that has the cursor) */
+    {"Window or full screen", "Ventana o pantalla completa"},
+    {"Sync with the monitor", "Sincroniza con el monitor"},
+    {"Shape of the picture", "Proporción de la imagen"},
+    {"How the picture fills the window", "Cómo llena la imagen la ventana"},
+    {"Smoothing of the scaled picture", "Suavizado de la imagen ampliada"},
+    {"Hides lines at the top and bottom", "Oculta líneas arriba y abajo"},
+    {"Extra columns at the sides", "Columnas extra a los lados"},
+    {"CRT lines over the picture", "Líneas de CRT sobre la imagen"},
+    {"Pixel grid over the picture", "Rejilla de píxeles sobre la imagen"},
+    {"Shows the frames per second", "Muestra los fotogramas por seg."},
+    {"CRT effect drawn with OpenGL", "Efecto CRT dibujado con OpenGL"},
+    {"Phosphor mask of the CRT", "Máscara de fósforo del CRT"},
+    {"Curve of the CRT screen", "Curvatura de la pantalla CRT"},
+    {"Glow around bright pixels", "Resplandor en los píxeles claros"},
+    {"Master volume", "Volumen general"},
+    {"Volume of the music", "Volumen de la música"},
+    {"Volume of the sound effects", "Volumen de los efectos"},
+    {"Where the sound comes out", "Por dónde sale el sonido"},
+    {"Back to the values of this tab", "Valores originales de la pestaña"},
+    {"Speed while fast forwarding", "Velocidad del avance rápido"},
+    {"Back to the game", "Volver al juego"},
+    {"Writes the save file now", "Escribe la partida ahora"},
+    {"Every option back to its default", "Todas las opciones a su valor"},
+    {"Closes the game", "Cierra el juego"},
+    {"Size of the touch controls", "Tamaño de los controles táctiles"},
+    {"How see-through the controls are", "Transparencia de los controles"},
+    {"Buzz when a control is pressed", "Vibra al pulsar un control"},
+    {"Move and resize the controls", "Mueve y cambia los controles"},
+    {"Controls back to their places", "Controles a su sitio"},
     /* tabs and title */
     {"OPTIONS", "OPCIONES"}, {"Image", "Vídeo"}, {"Audio", "Audio"}, {"Controls", "Entrada"}, {"Game", "Juego"},
     /* the rows of the Image tab */
@@ -91,6 +121,40 @@ static const char *bind_label(const char *sdl, char *buf, size_t n) {
     if (!strncmp(sdl, "Keypad ", 7)) { snprintf(buf, n, "Num %s", sdl + 7); return buf; }
     return sdl;
 }
+
+/* What the row with the cursor does: its label (as menu_row gets it) and the line shown for it. */
+static const struct { const char *label, *desc; } menu_descs[] = {
+    {"Fullscreen", "Window or full screen"},
+    {"VSync", "Sync with the monitor"},
+    {"Aspect", "Shape of the picture"},
+    {"Scaling", "How the picture fills the window"},
+    {"Filter", "Smoothing of the scaled picture"},
+    {"Overscan", "Hides lines at the top and bottom"},
+    {"Wide", "Extra columns at the sides"},
+    {"Scanlines", "CRT lines over the picture"},
+    {"Grid", "Pixel grid over the picture"},
+    {"FPS counter", "Shows the frames per second"},
+    {"Shader", "CRT effect drawn with OpenGL"},
+    {"Mask", "Phosphor mask of the CRT"},
+    {"Curve", "Curve of the CRT screen"},
+    {"Bloom", "Glow around bright pixels"},
+    {"Volume", "Master volume"},
+    {"Music volume", "Volume of the music"},
+    {"Effects volume", "Volume of the sound effects"},
+    {"Output device", "Where the sound comes out"},
+    {"Restore defaults", "Back to the values of this tab"},
+    {"Fast forward", "Speed while fast forwarding"},
+    {"Resume", "Back to the game"},
+    {"Save game now", "Writes the save file now"},
+    {"Restore all defaults", "Every option back to its default"},
+    {"Quit", "Closes the game"},
+    {"Size", "Size of the touch controls"},
+    {"Opacity", "How see-through the controls are"},
+    {"Vibration", "Buzz when a control is pressed"},
+    {"Edit layout", "Move and resize the controls"},
+    {"Reset layout", "Controls back to their places"},
+};
+#define MENU_DESC_COUNT ((int)(sizeof menu_descs / sizeof menu_descs[0]))
 
 /* `en` in the language of the menu; the English text itself if there is no translation. */
 static const char *tr(const char *en) {

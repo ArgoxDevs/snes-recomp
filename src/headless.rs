@@ -3772,6 +3772,12 @@ int main(void) {
                 if (w > groups[g].max) { printf("too wide (%s, %d > %d): %s\n", groups[g].what, w, groups[g].max, es); return 1; }
                 checked++;
             }
+        for (i = 0; i < MENU_DESC_COUNT; i++) {
+            int w = text_w(tr(menu_descs[i].desc));
+            if (w > PW - 24) { printf("too wide (description of a row, %d > %d): %s\n", w, PW - 24, tr(menu_descs[i].desc)); return 1; }
+            CHECK(valid_utf8(tr(menu_descs[i].desc)));
+            checked++;
+        }
         /* the four tabs share the width of the row (8 pixels of margin each); with the Touch tab there are five and the
          * margin is 3 and the gap 2 (tab_margin() and tab_gap() in runtime/play.c) */
         for (i = 0; i < 4; i++) { used += text_w(tr(tabs[i])) + 8 + 3; checked++; }
