@@ -1,4 +1,4 @@
-package io.github.alekaydevs.snesport;
+package io.github.argoxdevs.snesport;
 
 import android.content.Context;
 import android.content.SharedPreferences;

@@ -1,4 +1,4 @@
-package io.github.alekaydevs.snesport;
+package io.github.argoxdevs.snesport;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;

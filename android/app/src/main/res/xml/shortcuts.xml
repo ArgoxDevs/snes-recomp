@@ -6,8 +6,8 @@
         android:enabled="true"
         android:shortcutShortLabel="@string/shortcut_settings">
         <intent
-            android:action="io.github.alekaydevs.snesport.SETTINGS"
+            android:action="io.github.argoxdevs.snesport.SETTINGS"
             android:targetPackage="@string/app_id"
-            android:targetClass="io.github.alekaydevs.snesport.LauncherActivity" />
+            android:targetClass="io.github.argoxdevs.snesport.LauncherActivity" />
     </shortcut>
 </shortcuts>

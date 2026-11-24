@@ -1,4 +1,4 @@
-package io.github.alekaydevs.snesport;
+package io.github.argoxdevs.snesport;
 
 import android.app.PendingIntent;
 import android.content.Context;
@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * firma es la misma que la de la app instalada, así que una release ajena no puede reemplazarla.
  */
 final class UpdateInstaller {
-    static final String ACTION = "io.github.alekaydevs.snesport.INSTALL_STATUS";
+    static final String ACTION = "io.github.argoxdevs.snesport.INSTALL_STATUS";
     private static final int TIMEOUT_MS = 15000;
     private static final long MAX_APK = 200L << 20;
 
