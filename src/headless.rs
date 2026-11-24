@@ -3747,13 +3747,13 @@ int main(void) {
             {"label of a row with a value", VAL_R - VAL_W - 4 - (ROW_X + 16) - 2, {"Fullscreen", "VSync", "Aspect", "Scaling", "Filter", "Overscan", "Wide", "Scanlines", "Grid", "FPS counter", "Shader", "Mask", "Curve", "Bloom", "Volume", "Music volume", "Effects volume", "Output device", "Controls of", "Fast forward", "Language", "Size", "Opacity", "Vibration"}},
             {"label of an action", 180, {"Restore defaults", "Resume", "Save game now", "Restore all defaults", "Quit", "Edit layout", "Reset layout", "Session", "Screen", "Sound", "Touch controls", "Game options", "States", "Player", "App settings", "Cancel"}},
             {"value", VAL_W - 4, {"On", "Off", "integer", "fit", "free", "nearest", "bilinear", "sharp", "Default", "off", "crt", "max", "Player %d", "Yes", "No"}},
-            {"notice", PW - 24, {"Image options restored", "Audio options restored", "Everything restored to the defaults", "Press a key or a controller button", "Saved game written", "Enter restores everything, Esc cancels", "Enter quits the game, Esc cancels", "Used by P%d %s: Enter replaces, Esc cancels"}},
+            {"notice", PW - 24, {"Image options restored", "Audio options restored", "Everything restored to the defaults", "Press a key or a controller button", "Press a key", "Saved game written", "Enter restores everything, Esc cancels", "Enter quits the game, Esc cancels", "Used by P%d %s: Enter replaces, Esc cancels"}},
             {"help", PW - 20, {"L/R: tabs   A: select   B: close", "Press the key or button   Esc: cancel", "Q/W: tabs   Enter: select   Esc: close"}},
             {"title", 120, {"OPTIONS"}},
             {"title of the slot picker (drawn twice as large)", 110, {"SAVE STATES"}},
             {"empty cell of the slot picker (a picture is 48 wide)", 44, {"EMPTY"}},
             {"button of the Controls tab", 66, {"Up", "Down", "Left", "Right"}},
-            {"column header of the Controls tab", 64, {"Keyboard", "Controller"}},
+            {"column header of the Controls tab", 64, {"Keyboard", "Controller", "No controller"}},
             {"toast", 240, {"State saved (slot %d)", "State loaded (slot %d)", "Slot %d", "Slot %d is empty", "Cannot save", "Cannot load", "Cannot read the state", "Cannot write the state", "Save states are not available in this game", "wait a moment and try again", "not possible during the intro or title screen", "not a state of this version", "state of another game", "state taken at another stack depth", "out of memory"}},
             {"question of the phone menu", 184, {"Quit the game?", "Restore everything to the defaults?", "Press a button of the controller", "Used by P%d %s. Replace?"}},
         };
@@ -3772,9 +3772,9 @@ int main(void) {
                 if (w > groups[g].max) { printf("too wide (%s, %d > %d): %s\n", groups[g].what, w, groups[g].max, es); return 1; }
                 checked++;
             }
-        /* the four tabs share the width of the row (12 pixels of margin each); with the Touch tab there are five and the
+        /* the four tabs share the width of the row (8 pixels of margin each); with the Touch tab there are five and the
          * margin is 3 and the gap 2 (tab_margin() and tab_gap() in runtime/play.c) */
-        for (i = 0; i < 4; i++) { used += text_w(tr(tabs[i])) + 12 + 3; checked++; }
+        for (i = 0; i < 4; i++) { used += text_w(tr(tabs[i])) + 8 + 3; checked++; }
         if (used - 3 > ROW_W - 8) { printf("tabs too wide: %d\n", used - 3); return 1; }
         used = 0;
         for (i = 0; i < 5; i++) used += text_w(tr(tabs[i])) + 2 + 2;

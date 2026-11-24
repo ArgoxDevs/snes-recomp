@@ -185,6 +185,7 @@ void bus_write8(uint32_t a, uint8_t v) { mem[a & 0xFFFFFF] = v; }
 void snes_rt_register_entry(int (*fn)(Cpu *c, uint32_t addr)) { (void)fn; }
 void snes_rt_register_options(const GameOptDef *opts, int count) { (void)opts; (void)count; }
 void snes_rt_register_audio(int sfx_mask_addr) { (void)sfx_mask_addr; }
+void snes_rt_register_players(int players) { (void)players; }
 void rt_unresolved(Cpu *c, uint32_t site, uint32_t target) {
     (void)c;
     printf("UNRESOLVED site=%06X target=%06X\n", (unsigned)site, (unsigned)target);

@@ -121,6 +121,18 @@ void ppu_vram_write16(uint16_t word, uint16_t value) {
     vram[(word * 2u + 1u) & 0xFFFF] = (uint8_t)(value >> 8);
 }
 
+/* How many players the game has: the module of the game registers it when the runtime is a library of its own; linked in
+ * one piece, snes_entry.c's constant is read directly. */
+#ifdef SNES_RT_LIBRARY
+static int lib_players = 2;
+#define rt_players lib_players
+void snes_rt_register_players(int players) { lib_players = players; }
+#else
+extern const int snes_game_players;
+#define rt_players snes_game_players
+void snes_rt_register_players(int players) { (void)players; }
+#endif
+
 #define MAX_GAME_OPT 16
 static struct { char key[32]; long val; } game_opts[MAX_GAME_OPT];
 static int ngame_opts;
@@ -911,7 +923,7 @@ static const SnesRtSymbol rt_symbols[] = {
     RT_SYM(ppu_sprite_xoff), RT_SYM(ppu_sprite_xoff_clear), RT_SYM(ppu_wide), RT_SYM(ppu_wide_blank),
     RT_SYM(ppu_wide_blank_clear), RT_SYM(ppu_vram_read16), RT_SYM(ppu_vram_write16), RT_SYM(game_opt),
     RT_SYM(input_label), RT_SYM(rom_overlay), RT_SYM(rom_dir), RT_SYM(game_dir), RT_SYM(snes_set_window_icon),
-    RT_SYM(rt_resume), RT_SYM(snes_rt_register_entry), RT_SYM(snes_rt_register_options), RT_SYM(snes_rt_register_audio),
+    RT_SYM(rt_resume), RT_SYM(snes_rt_register_entry), RT_SYM(snes_rt_register_options), RT_SYM(snes_rt_register_audio), RT_SYM(snes_rt_register_players),
     RT_SYM(rt_unresolved), RT_SYM(rt_flag_mismatch), RT_SYM(rt_unsupported), RT_SYM(rt_wai), RT_SYM(rt_rti),
     RT_SYM(rt_lost_return), RT_SYM(rt_stp), RT_SYM(rt_brk), RT_SYM(rt_cop), RT_SYM(rt_wdm),
 #ifdef SNES_RT_TICK

@@ -29,6 +29,10 @@
  * --no-window runs without opening a window (for tests): it needs no display, but still SDL2.dll. For tests of the
  * menu there are also --menu-keys NAME,NAME,... (SDL key names pressed one per frame from frame 3, as if typed),
  * --menu-shot FILE.png and --menu-page N (the menu drawn over the last picture), --slot-shot FILE.png (the same with the slot picker) and --print-config.
+ * With the menu (F1) or the slot picker (F6) open, a left click does what a tap does on the phone: tabs, rows (left half of a value down, right half up), outside closes.
+ * --record FILE writes what player 1 pressed as a route (`A-B BUTTONS` lines, `@frames N`; the format of alttp-recomp's scripts/route.py,
+ * which also gives the --press list). Loading a state or rewinding adds a comment line: from there the route no longer replays from power-on.
+ * --log-wram FILE:ADDR[:LEN],... appends `FRAME ADDR=HEX...` each time one of those WRAM spans changes (hex addresses in $7E0000, LEN up to 64).
  * The ROM is read from the file at run time and is never part of the generated sources.
  */
 #define SDL_MAIN_HANDLED
@@ -210,7 +214,7 @@ static int bind_code_ok(int dev, int code) {
 static void bindings_load(const Ini *in) {
     char key[40], val[256];
     int p, b, dev;
-    for (p = 0; p < 2; p++) {
+    for (p = 0; p < rt_players; p++) {
         for (b = 0; b < 12; b++) {
             for (dev = 0; dev < 2; dev++) {
                 int ids[16], nid = 0, bad = 0, i;
@@ -241,7 +245,7 @@ static void bindings_load(const Ini *in) {
 static void bindings_store(Ini *out) {
     char key[40], val[256], name[64];
     int p, b, dev, i;
-    for (p = 0; p < 2; p++)
+    for (p = 0; p < rt_players; p++)
         for (b = 0; b < 12; b++)
             for (dev = 0; dev < 2; dev++) {
                 val[0] = 0;
@@ -349,8 +353,8 @@ static void open_pads(void) {
     int i, slot;
     for (i = 0; i < SDL_NumJoysticks(); i++) {
         if (!SDL_IsGameController(i) || SDL_GameControllerFromInstanceID(SDL_JoystickGetDeviceInstanceID(i))) continue;
-        for (slot = 0; slot < 2 && pads[slot]; slot++) {}
-        if (slot == 2) return;
+        for (slot = 0; slot < rt_players && pads[slot]; slot++) {}
+        if (slot >= rt_players) return;
         if ((pads[slot] = SDL_GameControllerOpen(i))) printf("controller %d: %s\n", slot + 1, SDL_GameControllerName(pads[slot]));
     }
 }
@@ -658,11 +662,14 @@ enum { TAB_IMAGE, TAB_AUDIO, TAB_CONTROLS, TAB_GAME, TAB_TOUCH, TAB_COUNT };
 static const char *const tab_names[TAB_COUNT] = {"Image", "Audio", "Controls", "Game", "Touch"};
 static int touch_on;                      /* the on-screen controls exist (Android, or --touch) */
 #define tab_count() (touch_on ? TAB_COUNT : TAB_COUNT - 1) /* the Touch tab is only there with them */
-#define tab_margin() (touch_on ? 2 : 12) /* five tabs need less margin each, and a smaller gap between them */
+#define tab_margin() (touch_on ? 2 : 8)  /* five tabs need less margin each, and a smaller gap between them */
 #define tab_gap() (touch_on ? 2 : 3)
 enum { ASK_NONE, ASK_RESTORE, ASK_QUIT };
 static void menu_lang_sync(void);
 static int menu_open, menu_tab, menu_sel[TAB_COUNT], menu_player, menu_capture = -1, menu_confirm, menu_ask, menu_tick, menu_by_pad; /* menu_ask: an ASK_* waiting for Enter or Esc */
+static int ctl_dev_pick = -1; /* Controls tab: keys (0) or controller (1); -1: the controller when there is one */
+/* The device the Controls tab edits: the controller only while one is connected for that player. */
+static int ctl_dev(int player) { return (ctl_dev_pick >= 0 ? ctl_dev_pick : 1) && pads[player] ? 1 : 0; }
 static Bind menu_pending;
 static char menu_msg[80];
 static const int image_opts[] = {O_FULLSCREEN, O_VSYNC, O_ASPECT, O_SCALING, O_FILTER, O_OVERSCAN, O_WIDE, O_SCANLINES, O_GRID, O_FPS, O_SHADER, O_CRT_MASK, O_CRT_CURVE, O_CRT_BLOOM};
@@ -818,6 +825,17 @@ static void opt_change(int opt, int dir) {
     int v = cfg.eff.v[opt];
     if (d->names) v = (v + dir + d->hi + 1) % (d->hi + 1);
     else { v += dir * d->step; if (v > d->hi) v = d->hi; if (v < d->lo) v = d->lo; }
+    config_user_set(&cfg, opt, v);
+    apply_option(opt);
+}
+
+/* A numeric option set straight to `v` (clamped to its range, in steps of its own): what a click on a bar does. */
+static void opt_set_value(int opt, int v) {
+    const OptDef *d = &opt_defs[opt];
+    if (d->names) return;
+    if (d->step > 1) v = d->lo + (v - d->lo + d->step / 2) / d->step * d->step;
+    if (v > d->hi) v = d->hi;
+    if (v < d->lo) v = d->lo;
     config_user_set(&cfg, opt, v);
     apply_option(opt);
 }
@@ -1192,8 +1210,14 @@ static void menu_change(int dir) {
         else if (dir == 0) restore_audio();
         break;
     case TAB_CONTROLS:
-        if (s == 0) menu_player = (menu_player + (dir ? dir : 1) + 2) % 2;
-        else if (dir == 0) { menu_capture = s - 1; snprintf(menu_msg, sizeof menu_msg, tr("Press a key or a controller button")); }
+        if (s == 0) {
+            int c = ctl_dev(menu_player) * 2 + menu_player, k, step = dir < 0 ? 3 : 1;
+            for (k = 0; k < 4; k++) {
+                c = (c + step) % 4;
+                if ((c & 1) < rt_players && (c < 2 || pads[c - 2])) break;
+            }
+            ctl_dev_pick = c >= 2; menu_player = c & 1;
+        } else if (dir == 0) { menu_capture = s - 1; snprintf(menu_msg, sizeof menu_msg, tr(ctl_dev(menu_player) ? "Press a button of the controller" : "Press a key")); }
         break;
     case TAB_TOUCH:
         touch_menu_change(s, dir);
@@ -1262,7 +1286,7 @@ static void menu_key(SDL_Scancode sc) {
     }
     if (menu_capture >= 0) {
         if (sc == SDL_SCANCODE_ESCAPE) { menu_capture = -1; menu_msg[0] = 0; }
-        else menu_assign(BIND_KEY, sc);
+        else if (!ctl_dev(menu_player)) menu_assign(BIND_KEY, sc);
         return;
     }
     if (touch_on) { mm_key(sc); return; }
@@ -1285,7 +1309,7 @@ static void menu_pad(SDL_GameControllerButton b) {
         menu_by_pad = 1;
         return;
     }
-    if (menu_capture >= 0) { menu_assign(BIND_PAD, b); menu_by_pad = 1; return; }
+    if (menu_capture >= 0) { if (ctl_dev(menu_player)) menu_assign(BIND_PAD, b); else if (b == SDL_CONTROLLER_BUTTON_B) menu_key(SDL_SCANCODE_ESCAPE); menu_by_pad = 1; return; }
     switch (b) {
     case SDL_CONTROLLER_BUTTON_DPAD_UP: menu_key(SDL_SCANCODE_UP); break;
     case SDL_CONTROLLER_BUTTON_DPAD_DOWN: menu_key(SDL_SCANCODE_DOWN); break;
@@ -1320,7 +1344,8 @@ static void bind_cell(char *out, size_t n, int dev, int player, int button) {
 /* Where the panel puts things (the picture is 256 by 224). */
 enum { PX = 10, PY = 6, PW = 236, PH = 214, ROW_X = 22, ROW_W = 212, ROW_Y = 52, ROW_H = 11, VAL_R = 228, VAL_W = 92 };
 /* The Controls tab has its own rows, a little closer, under a line with the names of the two columns. */
-enum { CTL_HEAD = 51, CTL_Y = 61, CTL_H = 10, CTL_LAB = 38, CTL_PAD = 170, CTL_PADW = 64 };
+enum { CTL_HEAD = 51, CTL_Y = 61, CTL_H = 10, CTL_X0 = 12, CTL_ROWW = 142, CTL_LAB = 24, CTL_PAD = 108, CTL_PADW = 40,
+       CTL_RX = 158, CTL_RW = 84, CTL_SEGW = 64, CTL_PADY = 63, CTL_BOXY = 112 };
 
 static const char *const btn_labels[12] = {"B", "Y", "Select", "Start", "Up", "Down", "Left", "Right", "A", "X", "L", "R"};
 
@@ -1329,9 +1354,10 @@ static const char *const btn_labels[12] = {"B", "Y", "Select", "Start", "Up", "D
 static void ctl_cols(int *labw, int *keyx, int *keyw) {
     int b, w = 0;
     for (b = 0; b < 12; b++) if (text_w(tr(btn_labels[b])) > w) w = text_w(tr(btn_labels[b]));
+    if (w > 70) w = 70;
     *labw = w;
-    *keyx = CTL_LAB + w + 6;
-    *keyw = CTL_PAD - 4 - *keyx;
+    *keyx = CTL_LAB + w + 2;
+    *keyw = CTL_X0 + CTL_ROWW - 3 - *keyx;
 }
 
 /* One row of the Controls tab: row 0 picks the player; the others show a console button, with its keys and its controller
@@ -1339,14 +1365,16 @@ static void ctl_cols(int *labw, int *keyx, int *keyw) {
 static void ctl_row(int i, int on, int player) {
     int y = CTL_Y + i * CTL_H, bob = on ? (menu_tick / 10) % 2 : 0;
     char val[96], fit[96];
-    if (on) cv_rect(&cv, ROW_X, y - 2, ROW_W, CTL_H - 1, 0x34489Cu);
-    if (on) ui_cursor(&cv, ROW_X + 3 + bob, y);
+    if (on) cv_rect(&cv, CTL_X0, y - 2, CTL_ROWW, CTL_H - 1, 0x34489Cu);
+    if (on) ui_cursor(&cv, CTL_X0 + 3 + bob, y);
     if (i == 0) {
-        int w, cx = ROW_X + ROW_W / 2;
-        snprintf(val, sizeof val, tr("Player %d"), player + 1);
+        int w, cx = CTL_X0 + CTL_ROWW / 2;
+        snprintf(fit, sizeof fit, tr("Player %d"), player + 1);
+        if (rt_players > 1) snprintf(val, sizeof val, "%s · %s", tr(ctl_dev(player) ? "Controller" : "Keyboard"), fit);
+        else snprintf(val, sizeof val, "%s", tr(ctl_dev(player) ? "Controller" : "Keyboard"));
         w = text_w(val);
         ui_arrow(&cv, cx - w / 2 - 12, y, -1, on ? UI_TEXT : UI_DIM);
-        text_center(&cv, ROW_X, ROW_W, y, val, on ? UI_GOOD : UI_TEXT);
+        text_center(&cv, CTL_X0, CTL_ROWW, y, val, on ? UI_GOOD : UI_TEXT);
         ui_arrow(&cv, cx + w / 2 + 6, y, 1, on ? UI_TEXT : UI_DIM);
         return;
     }
@@ -1355,16 +1383,92 @@ static void ctl_row(int i, int on, int player) {
         ctl_cols(&labw, &keyx, &keyw);
         text_fit(fit, sizeof fit, tr(btn_labels[i - 1]), labw);
         text_draw(&cv, CTL_LAB, y, fit, on ? UI_GOLD : UI_TEXT, 1);
-        x[0] = keyx; x[1] = CTL_PAD; w[0] = keyw; w[1] = CTL_PADW;
-        for (d = 0; d < 2; d++) {
+        d = ctl_dev(player);
+        {
             uint32_t col = on ? UI_GOOD : UI_TEXT;
             if (menu_capture == i - 1) snprintf(val, sizeof val, "...");
             else {
                 bind_cell(val, sizeof val, d, player, 0x8000 >> (i - 1));
                 if (!val[0]) { snprintf(val, sizeof val, "-"); col = UI_DIM; }
             }
-            text_fit(fit, sizeof fit, val, w[d]);
-            text_draw(&cv, x[d], y, fit, col, 1);
+            text_fit(fit, sizeof fit, val, keyw);
+            text_draw(&cv, keyx, y, fit, col, 1);
+        }
+        (void)x; (void)w;
+    }
+}
+
+/* ---- The pad of the Controls tab: a SNES controller drawn with rectangles, the button of the selected row lit ---- */
+
+static void cv_disc(Canvas *c, int cx, int cy, int r, uint32_t rgb) {
+    int dx, dy;
+    for (dy = -r; dy <= r; dy++) for (dx = -r; dx <= r; dx++) if (dx * dx + dy * dy <= r * r + r / 2) cv_put(c, cx + dx, cy + dy, rgb);
+}
+
+/* Where each console button sits on the drawing (relative to its corner): x, y, w, h. Order of btn_labels. */
+static const int ctl_pad_box[12][4] = {
+    {63, 29, 8, 8}, {55, 21, 8, 8}, {31, 29, 9, 5}, {43, 29, 9, 5},   /* B, Y, Select, Start */
+    {14, 14, 6, 6}, {14, 26, 6, 6}, {8, 20, 6, 6}, {20, 20, 6, 6},    /* Up, Down, Left, Right */
+    {71, 21, 8, 8}, {63, 13, 8, 8}, {3, 0, 22, 6}, {59, 0, 22, 6}      /* A, X, L, R */
+};
+
+/* The console button under the point (cx, cy) of the picture, or -1. */
+static int ctl_pad_hit(int cx, int cy) {
+    int b;
+    for (b = 0; b < 12; b++) {
+        int x = CTL_RX + ctl_pad_box[b][0] - 2, y = CTL_PADY + ctl_pad_box[b][1] - 2;
+        if (cx >= x && cx < x + ctl_pad_box[b][2] + 4 && cy >= y && cy < y + ctl_pad_box[b][3] + 4) return b;
+    }
+    return -1;
+}
+
+static void ctl_pad_draw(int sel) {
+    const uint32_t edge = 0x2A3060u, body = 0xB4B8CCu, shade = 0x8A90AAu, dark = 0x3A3F5Cu;
+    uint32_t hi = (menu_tick / 10) % 2 ? 0xFFFFFFu : UI_GOLD;
+    int ox = CTL_RX, oy = CTL_PADY, b;
+    static const uint32_t face[4] = { 0xE6C229u, 0x4CAF50u, 0xD83A3Au, 0x3E6FD8u }; /* B yellow, Y green, A red, X blue */
+    cv_rect(&cv, ox + 3, oy, 22, 6, sel == 10 ? hi : shade);
+    cv_rect(&cv, ox + 59, oy, 22, 6, sel == 11 ? hi : shade);
+    cv_rect(&cv, ox + 1, oy + 5, 82, 36, edge);
+    cv_rect(&cv, ox, oy + 8, 84, 30, edge);
+    cv_rect(&cv, ox + 2, oy + 6, 80, 34, body);
+    cv_rect(&cv, ox + 1, oy + 9, 82, 28, body);
+    for (b = 4; b < 8; b++) cv_rect(&cv, ox + ctl_pad_box[b][0], oy + ctl_pad_box[b][1], 6, 6, sel == b ? hi : dark);
+    cv_rect(&cv, ox + 14, oy + 20, 6, 6, dark);
+    for (b = 2; b < 4; b++) cv_rect(&cv, ox + ctl_pad_box[b][0], oy + ctl_pad_box[b][1], 9, 4, sel == b ? hi : shade);
+    for (b = 0; b < 12; b++) {
+        int k = b == 0 ? 0 : b == 1 ? 1 : b == 8 ? 2 : b == 9 ? 3 : -1;
+        if (k < 0) continue;
+        cv_disc(&cv, ox + ctl_pad_box[b][0] + 4, oy + ctl_pad_box[b][1] + 4, sel == b ? 5 : 4, sel == b ? hi : edge);
+        cv_disc(&cv, ox + ctl_pad_box[b][0] + 4, oy + ctl_pad_box[b][1] + 4, 3, sel == b ? UI_GOLD : face[k]);
+    }
+}
+
+/* The box under the pad: the selected button with its keys and its controller buttons in full, or the state of the controller. */
+static void ctl_detail(int player, int s) {
+    char val[96], fit[96];
+    int x = CTL_RX, w = CTL_RW, y = CTL_BOXY, dev = ctl_dev(player);
+    cv_rect(&cv, x, y, w, 72, 0x161E5Cu);
+    cv_rect(&cv, x, y, w, 1, 0x4A5688u);
+    if (s >= 1) {
+        int bt = 0x8000 >> (s - 1);
+        text_center(&cv, x, w, y + 4, tr(btn_labels[s - 1]), UI_GOLD);
+        text_draw(&cv, x + 5, y + 20, tr(dev ? "Controller" : "Keyboard"), UI_DIM, 1);
+        if (menu_capture == s - 1) snprintf(val, sizeof val, "...");
+        else bind_cell(val, sizeof val, dev, player, bt);
+        if (!val[0]) snprintf(val, sizeof val, "-");
+        text_fit(fit, sizeof fit, val, w - 10);
+        text_draw(&cv, x + 5, y + 31, fit, menu_capture == s - 1 ? UI_GOLD : (val[0] == '-' && !val[1] ? UI_DIM : UI_GOOD), 1);
+    } else {
+        if (rt_players > 1) snprintf(val, sizeof val, tr("Player %d"), player + 1);
+        else snprintf(val, sizeof val, "%s", tr(dev ? "Controller" : "Keyboard"));
+        text_center(&cv, x, w, y + 4, val, UI_GOLD);
+        if (dev) {
+            text_fit(fit, sizeof fit, SDL_GameControllerName(pads[player]), w - 10);
+            text_center(&cv, x, w, y + 22, fit, UI_GOOD);
+        } else {
+            text_center(&cv, x, w, y + 22, tr("Keyboard"), UI_GOOD);
+            if (!pads[player]) text_center(&cv, x, w, y + 36, tr("No controller"), UI_DIM);
         }
     }
 }
@@ -1442,8 +1546,24 @@ static void menu_draw(const uint8_t *fb) {
     if (menu_tab == TAB_CONTROLS) {
         int labw, keyx, keyw;
         ctl_cols(&labw, &keyx, &keyw);
-        text_draw(&cv, keyx, CTL_HEAD, tr("Keyboard"), UI_DIM, 1);
-        text_draw(&cv, CTL_PAD, CTL_HEAD, tr("Controller"), UI_DIM, 1);
+        {
+            int d, dev = ctl_dev(menu_player);
+            for (d = 0; d < 2; d++) {
+                int sx = CTL_X0 + d * (CTL_SEGW + 2), ok = d == 0 || pads[menu_player] != NULL;
+                cv_rect(&cv, sx, CTL_HEAD - 2, CTL_SEGW, 10, d == dev ? 0x4A64C8u : 0x141C50u);
+                if (d == dev) cv_rect(&cv, sx, CTL_HEAD - 2, CTL_SEGW, 1, 0xE8ECFAu);
+                if (d == 1) cv_disc(&cv, sx + 6, CTL_HEAD + 3, 2, ok ? 0x4CD964u : 0x6B7090u);
+                text_center(&cv, sx + (d == 1 ? 6 : 0), CTL_SEGW - (d == 1 ? 6 : 0), CTL_HEAD - 1, tr(d ? "Controller" : "Keyboard"), d == dev ? UI_GOLD : (ok ? UI_TEXT : 0x4A5688u));
+            }
+        }
+        ctl_pad_draw(menu_sel[TAB_CONTROLS] >= 1 ? menu_sel[TAB_CONTROLS] - 1 : -1);
+        ctl_detail(menu_player, menu_sel[TAB_CONTROLS]);
+        {
+            SDL_GameController *gc = pads[menu_player];
+            char nm[96];
+            text_fit(nm, sizeof nm, gc ? SDL_GameControllerName(gc) : tr("No controller"), CTL_RW);
+            text_draw(&cv, CTL_RX, CTL_HEAD - 1, nm, gc ? UI_TEXT : UI_DIM, 1);
+        }
     }
     for (i = 0; i < n; i++) {
         int on = i == s;
@@ -1578,7 +1698,7 @@ static void mm_row(int page, int i, MRow *r) {
         else { r->label = mm_titles[mm_main_target(i)]; r->kind = MK_SUB; }
         break;
     case MM_PAD:
-        if (i == 0) { r->label = "Player"; r->kind = MK_VALUE; snprintf(r->val, sizeof r->val, tr("Player %d"), menu_player + 1); r->dimL = menu_player == 0; r->dimR = menu_player == 1; }
+        if (i == 0) { r->label = "Player"; r->kind = MK_VALUE; snprintf(r->val, sizeof r->val, tr("Player %d"), menu_player + 1); r->dimL = menu_player == 0 || rt_players < 2; r->dimR = menu_player == 1 || rt_players < 2; }
         else {
             r->label = btn_labels[i - 1]; r->kind = MK_TEXT;
             bind_cell(r->val, sizeof r->val, BIND_PAD, menu_player, 0x8000 >> (i - 1));
@@ -1653,7 +1773,7 @@ static void mm_change(int page, int i, int dir) {
         else { mm_page = mm_main_target(i); mm_follow(); }
         break;
     case MM_PAD:
-        if (i == 0) menu_player = (menu_player + (dir ? dir : 1) + 2) % 2;
+        if (i == 0) { if (rt_players > 1) menu_player = (menu_player + (dir ? dir : 1) + 2) % 2; }
         else if (dir == 0) { menu_capture = i - 1; menu_msg[0] = 0; }
         break;
     case MM_SESSION:
@@ -1911,6 +2031,7 @@ static int menu_row_has_value(int i) {
  * While a question or a key assignment waits, a tap on the notice answers yes and a tap anywhere else no. Returns 1 when
  * the tap was the menu's (0 when it is on one of the on-screen controls, which keep working). */
 static int menu_tap_canvas(int cx, int cy);
+static int mouse_mode; /* 1 while a mouse click (not a finger) is handled by menu_tap_canvas */
 
 /* Where the window point (px, py) is on the 256x224 picture of the menu (-1, -1 outside it); 0 when it is on a control of the screen. */
 static int menu_canvas_pt(int px, int py, int w, int h, int *cxo, int *cyo) {
@@ -1965,18 +2086,122 @@ static int menu_tap_canvas(int cx, int cy) {
     n = menu_count(menu_tab);
     {
         int top = menu_tab == TAB_CONTROLS ? CTL_Y - 2 : ROW_Y - 2, rh = menu_tab == TAB_CONTROLS ? CTL_H : ROW_H;
-        if (cx < ROW_X || cx >= ROW_X + ROW_W || cy < top) return 1;
+        if (menu_tab == TAB_CONTROLS && cy < CTL_Y - 2 && cy >= CTL_HEAD - 3 && cx < CTL_RX - 2) {
+            if (cx >= CTL_X0 + CTL_SEGW + 2) { if (pads[menu_player]) ctl_dev_pick = 1; }
+            else ctl_dev_pick = 0;
+            return 1;
+        }
+        if (menu_tab == TAB_CONTROLS && cx >= CTL_RX - 2) {
+            int pb = ctl_pad_hit(cx, cy);
+            if (pb >= 0) { menu_sel[TAB_CONTROLS] = pb + 1; menu_msg[0] = 0; menu_change(0); }
+            return 1;
+        }
+        if (cx < (menu_tab == TAB_CONTROLS ? CTL_X0 : ROW_X) || cx >= (menu_tab == TAB_CONTROLS ? CTL_X0 + CTL_ROWW : ROW_X + ROW_W) || cy < top) return 1;
         i = (cy - top) / rh;
         if (i >= n) return 1;
         menu_sel[menu_tab] = i;
         menu_msg[0] = 0;
-        if (menu_row_has_value(i) && cx >= (menu_tab == TAB_CONTROLS ? ROW_X + ROW_W / 2 : VAL_R - VAL_W - 4)) {
-            int mid = menu_tab == TAB_CONTROLS ? ROW_X + ROW_W / 2 : VAL_R - VAL_W / 2 - 4;
+        if (mouse_mode && menu_tab == TAB_AUDIO && i < 3) {
+            /* the volume bars: a click on the bar puts the volume where it fell (the bar is 84 wide, from VAL_R - 110) */
+            int bx = VAL_R - 84 - 26;
+            if (cx >= bx - 2 && cx < bx + 84 + 2) {
+                static const int vol[3] = { O_VOLUME, O_MUSIC_VOLUME, O_SFX_VOLUME };
+                const OptDef *d = &opt_defs[vol[i]];
+                int off = cx - bx < 0 ? 0 : cx - bx > 83 ? 83 : cx - bx;
+                opt_set_value(vol[i], d->lo + off * (d->hi - d->lo) / 83);
+            }
+        } else if (mouse_mode && menu_tab != TAB_CONTROLS && menu_row_has_value(i)) {
+            /* a mouse click on a row with a value only changes it on its arrows; anywhere else it just selects the row */
+            int left = VAL_R - VAL_W - 4;
+            if (cx >= left - 3 && cx < left + 9) menu_change(-1);
+            else if (cx >= VAL_R - 13 && cx < VAL_R + 3) menu_change(1);
+        } else if (menu_row_has_value(i) && cx >= (menu_tab == TAB_CONTROLS ? CTL_X0 + CTL_ROWW / 2 : VAL_R - VAL_W - 4)) {
+            int mid = menu_tab == TAB_CONTROLS ? CTL_X0 + CTL_ROWW / 2 : VAL_R - VAL_W / 2 - 4;
             menu_change(cx < mid ? -1 : 1);
-        } else if (menu_tab == TAB_CONTROLS && i == 0) menu_change(cx < ROW_X + ROW_W / 2 ? -1 : 1);
+        } else if (menu_tab == TAB_CONTROLS && i == 0) menu_change(cx < CTL_X0 + CTL_ROWW / 2 ? -1 : 1);
         else menu_change(0);
     }
     return 1;
+}
+
+/* ---- --record / --log-wram: what the player did and which memory changed, for tests played by a person ---- */
+
+static uint32_t rec_loads; /* states loaded or steps rewound so far: after one, a recording no longer replays from power-on */
+static FILE *rec_f, *log_f;
+static uint16_t rec_mask;
+static uint32_t rec_start, rec_last, rec_loads_seen;
+static struct { uint32_t addr, len; } log_span[16];
+static int log_n;
+static uint8_t log_prev[16][64];
+
+static void rec_flush(uint32_t end) {
+    int i, first = 1;
+    if (!rec_f || !rec_mask || end < rec_start) return;
+    fprintf(rec_f, "%u-%u ", (unsigned)rec_start, (unsigned)end);
+    for (i = 0; i < JOY_NAMES; i++) if (rec_mask & (0x8000 >> i)) { fprintf(rec_f, first ? "%s" : "+%s", joy_name[i]); first = 0; }
+    fputc('\n', rec_f);
+    fflush(rec_f);
+}
+
+static void rec_finish(void) {
+    if (!rec_f) return;
+    rec_flush(rec_last);
+    fprintf(rec_f, "@frames %u\n", (unsigned)rec_last + 60);
+    fclose(rec_f);
+    rec_f = NULL;
+}
+
+/* After the pad of the next frame is known (it applies to frame number `frames`, as in --press). */
+static void rec_frame(void) {
+    if (rec_f) {
+        if (rec_loads != rec_loads_seen) {
+            rec_flush(frames - 1);
+            rec_mask = 0;
+            rec_loads_seen = rec_loads;
+            fprintf(rec_f, "# estado cargado o rebobinado antes del fotograma %u: desde aqui la ruta no se repite desde el arranque\n", (unsigned)frames);
+        }
+        if (live_pad != rec_mask) {
+            rec_flush(frames - 1);
+            rec_mask = live_pad;
+            rec_start = frames;
+        }
+        rec_last = frames;
+    }
+    if (log_f) {
+        int i, changed = frames <= 1;
+        uint32_t k;
+        for (i = 0; i < log_n && !changed; i++) changed = memcmp(log_prev[i], wram + log_span[i].addr, log_span[i].len) != 0;
+        if (changed) {
+            fprintf(log_f, "%u", (unsigned)frames);
+            for (i = 0; i < log_n; i++) {
+                fprintf(log_f, " %05X=", (unsigned)log_span[i].addr);
+                for (k = 0; k < log_span[i].len; k++) fprintf(log_f, "%02X", wram[log_span[i].addr + k]);
+                memcpy(log_prev[i], wram + log_span[i].addr, log_span[i].len);
+            }
+            fputc('\n', log_f);
+            fflush(log_f);
+        }
+    }
+}
+
+/* --log-wram FILE:ADDR[:LEN],ADDR[:LEN]...: appends `FRAME ADDR=HEX...` (same format as headless --sample) each time any of them changes. */
+static int parse_log_wram(char *arg) {
+    char *c = strchr(arg, ':'), *end, *tok;
+    if (!c) return 0;
+    *c++ = 0;
+    for (tok = strtok(c, ","); tok; tok = strtok(NULL, ",")) {
+        uint32_t a, len = 1;
+        char *colon = strchr(tok, ':');
+        if (colon) {
+            *colon++ = 0;
+            len = (uint32_t)strtoul(colon, &end, 10);
+            if (*end || end == colon || len == 0 || len > 64) return 0;
+        }
+        if (!parse_wram_addr(tok, &end, &a) || *end || a + len > 0x20000 || log_n == 16) return 0;
+        log_span[log_n].addr = a;
+        log_span[log_n++].len = len;
+    }
+    return log_n > 0 && (log_f = fopen(arg, "w")) != NULL;
 }
 
 #include "play_state.h"
@@ -2018,6 +2243,34 @@ static void ui_key(SDL_Scancode sc) {
     if (sc == SDL_SCANCODE_F1 || sc == SDL_SCANCODE_ESCAPE) menu_open_now();
 }
 
+/* The mouse (desktop): a left click on the menu or on the slot picker does what a tap does on the phone. Window points go to the 256x224
+ * picture of the menu the same way as for a finger, without the touch controls (they are not there with a mouse). */
+static void mouse_click(int mx, int my) {
+    int w, h, ww, wh, px, py, lines = view_lines(), e = (show_w - SCREEN_W) / 2, cx, cy;
+    Rect r;
+    touch_win(&w, &h);
+    SDL_GetWindowSize(win, &ww, &wh);
+    if (ww <= 0 || wh <= 0) return;
+    px = (int)((long)mx * w / ww);
+    py = (int)((long)my * h / wh);
+    r = view_rect(w, h, cfg.eff.v[O_ASPECT], cfg.eff.v[O_SCALING], lines, show_w);
+    if (px < r.x || py < r.y || px >= r.x + r.w || py >= r.y + r.h) cx = cy = -1;
+    else {
+        cx = (int)((long)(px - r.x) * show_w / r.w) - e;
+        cy = (int)((long)(py - r.y) * lines / r.h) + cfg.eff.v[O_OVERSCAN];
+    }
+    if (slot_open) {
+        int sl;
+        if (cx < 0) { slot_close(); return; }
+        sl = slot_cell_at(cx, cy);
+        if (sl) slot_choose(sl);
+    } else if (menu_open) {
+        mouse_mode = 1;
+        menu_tap_canvas(cx, cy);
+        mouse_mode = 0;
+    }
+}
+
 static void handle_events(void) {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
@@ -2035,6 +2288,7 @@ static void handle_events(void) {
         if (e.type == SDL_APP_WILLENTERBACKGROUND) { srm_save(); touch_save_cfg(); }
         if (e.type == SDL_APP_DIDENTERFOREGROUND) t_next = SDL_GetPerformanceCounter(); /* the time spent away is not a stall */
         if (e.type == SDL_FINGERDOWN || e.type == SDL_FINGERMOTION || e.type == SDL_FINGERUP) { if (touch_on) touch_finger(&e); continue; }
+        if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT && e.button.which != SDL_TOUCH_MOUSEID && (menu_open || slot_open)) { last_input_pad = 0; last_input_touch = 0; mouse_click(e.button.x, e.button.y); continue; }
         if (e.type == SDL_CONTROLLERBUTTONDOWN) { last_input_pad = 1; last_input_touch = 0; touch_visible = 0; }
         if (e.type == SDL_KEYDOWN) { last_input_pad = 0; last_input_touch = 0; }
         if (e.type == SDL_CONTROLLERBUTTONDOWN && !slot_open && !menu_open && (e.cbutton.button == SDL_CONTROLLER_BUTTON_LEFTSTICK || e.cbutton.button == SDL_CONTROLLER_BUTTON_RIGHTSTICK)) {
@@ -2432,6 +2686,7 @@ static void play_frame(void) {
     if (opt_no_window) {
         live_pad = held;
         live_pad2 = 0;
+        rec_frame();
         return;
     }
     present(shown_frame());
@@ -2448,7 +2703,8 @@ static void play_frame(void) {
         if (adev) audio_silence(AUD_PRIME);
     }
     live_pad = read_keyboard(0) | read_pad(0) | held | touch_pad();
-    live_pad2 = read_keyboard(1) | read_pad(1);
+    live_pad2 = rt_players > 1 ? read_keyboard(1) | read_pad(1) : 0;
+    rec_frame();
     pace();
 }
 
@@ -2577,6 +2833,8 @@ int main(int argc, char **argv) {
         }
         else if (!strcmp(argv[i], "--press") && i + 1 < argc) { if (!parse_press(argv[++i])) { bad = 1; break; } }
         else if (!strcmp(argv[i], "--hash-wram")) st_hash_wram = 1;
+        else if (!strcmp(argv[i], "--record") && i + 1 < argc) { if (!(rec_f = fopen(argv[++i], "w"))) { fprintf(stderr, "error: cannot write %s\n", argv[i]); return 2; } }
+        else if (!strcmp(argv[i], "--log-wram") && i + 1 < argc) { if (!parse_log_wram(argv[++i])) { bad = 1; break; } }
         else if (!strcmp(argv[i], "--state-script") && i + 1 < argc) { if (!parse_state_keys(argv[++i])) { bad = 1; break; } }
         else if (!strcmp(argv[i], "--hold") && i + 1 < argc) { int m = parse_buttons(argv[++i]); if (m < 0) { bad = 1; break; } held |= (uint16_t)m; }
         else if (!strcmp(argv[i], "--poke") && i + 1 < argc) { if (!parse_poke(argv[++i])) { bad = 1; break; } }
@@ -2613,6 +2871,7 @@ int main(int argc, char **argv) {
     play_state_init(path);
     st_echo = opt_no_window;
     if (st_hash_wram) atexit(st_print_hash);
+    if (rec_f) atexit(rec_finish);
     if (opt_print_keys) {
         for (i = 0; i < nbinds; i++)
             if (binds[i].dev == BIND_KEY && binds[i].player == 0) printf("%s = %s\n", SDL_GetScancodeName((SDL_Scancode)binds[i].code), button_name((uint16_t)binds[i].button));

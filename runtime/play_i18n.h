@@ -11,7 +11,7 @@ typedef struct { const char *en, *es; } I18n;
 
 static const I18n i18n_table[] = {
     /* tabs and title */
-    {"OPTIONS", "OPCIONES"}, {"Image", "Vídeo"}, {"Audio", "Audio"}, {"Controls", "Mandos"}, {"Game", "Juego"},
+    {"OPTIONS", "OPCIONES"}, {"Image", "Vídeo"}, {"Audio", "Audio"}, {"Controls", "Entrada"}, {"Game", "Juego"},
     /* the rows of the Image tab */
     {"Fullscreen", "Pant. completa"}, {"VSync", "VSync"}, {"Aspect", "Aspecto"}, {"Scaling", "Escalado"}, {"Filter", "Filtro"},
     {"Overscan", "Overscan"}, {"Wide", "Ancho"}, {"Scanlines", "Líneas CRT"}, {"Grid", "Rejilla"}, {"FPS counter", "Mostrar FPS"},
@@ -22,7 +22,7 @@ static const I18n i18n_table[] = {
     {"bilinear", "bilineal"}, {"sharp", "nítido"}, {"Default", "Por defecto"}, {"off", "no"}, {"crt", "CRT"},
     /* Audio and Controls */
     {"Volume", "Volumen"}, {"Music volume", "Música"}, {"Effects volume", "Efectos"}, {"Output device", "Salida"}, {"Controls of", "Controles de"}, {"Player %d", "Jugador %d"},
-    {"Keyboard", "Teclado"}, {"Controller", "Mando"}, {"Up", "Arriba"}, {"Down", "Abajo"}, {"Left", "Izquierda"}, {"Right", "Derecha"},
+    {"No controller", "Sin mando"}, {"Press a key", "Pulsa una tecla"}, {"Keyboard", "Teclado"}, {"Controller", "Mando"}, {"Up", "Arriba"}, {"Down", "Abajo"}, {"Left", "Izquierda"}, {"Right", "Derecha"},
     /* Game */
     {"Fast forward", "Avance rápido"}, {"max", "máx."}, {"Language", "Idioma"}, {"Resume", "Continuar"}, {"Save game now", "Guardar partida ahora"}, {"Restore all defaults", "Restaurar todo"},
     {"Quit", "Salir"},

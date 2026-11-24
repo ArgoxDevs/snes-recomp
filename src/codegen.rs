@@ -339,6 +339,7 @@ pub struct Emitter<'a> {
     resume: Option<u32>,
     /// SPC700 RAM address of the mask of the voices of the sound effects (`[audio]`), handed to the runtime by snes_rt_module_init.
     audio_sfx_mask: Option<u16>,
+    players: u8,
 }
 
 /// A function body under construction: the blocks it owns and what it refers to.
@@ -372,7 +373,13 @@ impl Variants {
 
 impl<'a> Emitter<'a> {
     pub fn new(d: &'a Discovery, g: &'a Graph) -> Self {
-        Emitter { d, g, hooks: BTreeMap::new(), guards: BTreeMap::new(), options: Vec::new(), resume: None, audio_sfx_mask: None }
+        Emitter { d, g, hooks: BTreeMap::new(), guards: BTreeMap::new(), options: Vec::new(), resume: None, audio_sfx_mask: None, players: 2 }
+    }
+
+    /// How many players the game has (`[input] players`; `None` is 2).
+    pub fn with_players(mut self, players: Option<u8>) -> Self {
+        self.players = players.unwrap_or(2);
+        self
     }
 
     /// Where the driver of the game keeps the mask of the voices of the sound effects (`[audio] sfx_voice_mask`).
@@ -887,8 +894,9 @@ impl<'a> Emitter<'a> {
         entry.push_str("    default: return 0;\n    }\n}\n");
         entry.push_str(&self.options_c());
         entry.push_str(&format!("\n/* Where the driver keeps the voices of the sound effects (-1: nowhere); read directly when linked in one piece. */\nconst int snes_game_sfx_voice_mask = {};\n", self.audio_sfx_mask.map_or(-1, i32::from)));
+        entry.push_str(&format!("\n/* How many players the game has (`[input] players`: 1 or 2); read directly when linked in one piece. */\nconst int snes_game_players = {};\n", self.players));
         entry.push_str("\n/* Registers snes_call_entry and the options with the runtime (needed when it is a library of its own). */\n");
-        entry.push_str(&format!("void snes_rt_module_init(void) {{\n    snes_rt_register_entry(snes_call_entry);\n    snes_rt_register_options(snes_game_opts, snes_game_opt_count);\n    snes_rt_register_audio({});\n}}\n", self.audio_sfx_mask.map_or(-1, i32::from)));
+        entry.push_str(&format!("void snes_rt_module_init(void) {{\n    snes_rt_register_entry(snes_call_entry);\n    snes_rt_register_options(snes_game_opts, snes_game_opt_count);\n    snes_rt_register_audio({});\n    snes_rt_register_players({});\n}}\n", self.audio_sfx_mask.map_or(-1, i32::from), self.players));
         FullOutput { header, entry, banks, functions: self.g.functions.len(), unsupported }
     }
 }
@@ -1311,7 +1319,10 @@ sep xf=1 x=0034 p=10
                 || l == "    snes_rt_register_entry(snes_call_entry);"
                 || l == "    snes_rt_register_options(snes_game_opts, snes_game_opt_count);"
                 || l.starts_with("    snes_rt_register_audio(")
+                || l.starts_with("    snes_rt_register_players(")
                 || l.starts_with("const int snes_game_sfx_voice_mask = ")
+                || l.starts_with("const int snes_game_players = ")
+                || l.starts_with("/* How many players the game has")
                 || l.trim_start().starts_with("case 0x00")
                 || ["    switch (addr & 0xFFFFFF) {", "    default: return 0;", "    }", "}"].contains(&l);
             assert!(known, "unexpected line: {l}");

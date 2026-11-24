@@ -58,6 +58,9 @@
 //! # kind = "guard"       # at any instruction of a function: `int my_guard(Cpu *c)`; if it returns non-zero the function
 //! #                      # leaves with `ret`, or goes on at `goto = "BB:AAAA"` (an address of the same function)
 //!
+//! [input]
+//! players = 1              # 1 or 2 players (default 2): with 1 the menu offers no player 2 and the second pad reads nothing
+//!
 //! [audio]
 //! sfx_voice_mask = 0x1A     # SPC700 RAM address of the byte with a bit per DSP voice that plays sound effects (music and effects volume)
 //! [resume]                 # where the runtime can save and load states: a block of the main loop, with the 65816 stack at its base
@@ -106,6 +109,13 @@ struct RawConfig {
     option: Vec<RawOption>,
     resume: Option<RawResume>,
     audio: Option<RawAudio>,
+    input: Option<RawInput>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawInput {
+    players: Option<u8>,
 }
 
 #[derive(Deserialize)]
@@ -310,6 +320,8 @@ pub struct Config {
     pub resume: Option<u32>,
     /// Where in the SPC700 RAM the driver keeps the mask of the voices that play sound effects (`[audio] sfx_voice_mask`), to tell music from effects.
     pub audio_sfx_mask: Option<u16>,
+    /// How many players the game has (`[input] players`, 1 or 2); `None` is 2.
+    pub players: Option<u8>,
 }
 
 fn width(v: Option<u8>, what: &str) -> Result<bool, String> {
@@ -438,6 +450,15 @@ impl Config {
         if let Some(a) = raw.audio {
             if let Some(m) = a.sfx_voice_mask {
                 cfg.audio_sfx_mask = Some(u16::try_from(m).map_err(|_| format!("[audio]: sfx_voice_mask must be an address of the SPC700 RAM (0 to 0xFFFF), got {m}"))?);
+            }
+        }
+
+        if let Some(i) = raw.input {
+            if let Some(p) = i.players {
+                if !(1..=2).contains(&p) {
+                    return Err(format!("[input]: players must be 1 or 2, got {p}"));
+                }
+                cfg.players = Some(p);
             }
         }
 

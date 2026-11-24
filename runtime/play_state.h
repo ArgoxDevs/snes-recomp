@@ -217,6 +217,7 @@ static void st_request(int kind) {
         if (!state_data) { st_say(tr("Cannot read the state")); return; }
         st_pending = 2;
         state_req = 2;
+        rec_loads++;
     } else {
         st_pending = kind == 1 ? 1 : 3;
         state_req = 1;
@@ -282,6 +283,7 @@ static void play_state_tick(int want_rewind, int idle) {
         if (st_echo) printf("state: rewind step, %d older states (frame %u)\n", st_count, (unsigned)frames);
         st_pending = 4;
         state_req = 2;
+        rec_loads++;
         st_since = frames;
         return;
     }

@@ -43,7 +43,7 @@ pub fn generate_with_config(rom: &Rom, cfg: &Config, game: &[Source]) -> Result<
     let d = discover::discover(rom, cfg, &roots);
     let root_addrs: Vec<u32> = roots.iter().map(|r| r.0).collect();
     let g = graph::Graph::build(&d, &root_addrs);
-    let output = codegen::Emitter::new(&d, &g).with_hooks(&cfg.hooks)?.with_options(&cfg.options).with_resume(cfg.resume)?.with_audio_sfx_mask(cfg.audio_sfx_mask).generate_all();
+    let output = codegen::Emitter::new(&d, &g).with_hooks(&cfg.hooks)?.with_options(&cfg.options).with_resume(cfg.resume)?.with_audio_sfx_mask(cfg.audio_sfx_mask).with_players(cfg.players).generate_all();
     let mut sources = vec![
         Source { name: "snes_funcs.h".into(), text: output.header.clone() },
         Source { name: "snes_entry.c".into(), text: output.entry.clone() },

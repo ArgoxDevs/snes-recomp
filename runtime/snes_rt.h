@@ -88,6 +88,8 @@ extern const int snes_game_opt_count;
 void snes_rt_register_options(const GameOptDef *opts, int count);
 /* The module of the game says where in the SPC700 RAM the driver keeps the mask of the voices of the sound effects (-1: it does not). */
 void snes_rt_register_audio(int sfx_mask_addr);
+/* The module of the game says how many players it has (`[input] players`: 1 or 2). */
+void snes_rt_register_players(int players);
 
 /* The module of the game registers its dispatch by address (snes_call_entry) and its options with the runtime.
  * snes_entry.c defines snes_rt_module_init, which does it; a runtime built as a library of its own (SNES_RT_LIBRARY) needs it called

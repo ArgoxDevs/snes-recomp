@@ -27,6 +27,11 @@
  * --poke ADDR=BYTES@N writes BYTES (hex pairs) to consecutive WRAM bytes from ADDR (same forms as --watch) when
  * frame N starts, for debugging (e.g. moving Link: --poke 20=A008C007@3000).
  *
+ * --sample FILE:EVERY:ADDR[:LEN][,ADDR[:LEN]]... appends to FILE, every EVERY frames (frame 0 is not sampled: the WRAM is not initialised yet), one line
+ * `FRAME ADDR=HEX ADDR=HEX...` with the WRAM bytes at those addresses (ADDR in hex, offset in $7E0000, 5 digits in the
+ * output; LEN in decimal, 1 by default), as they are when FRAME frames have run. It can be given several times. The format
+ * is what the BizHawk script of alttp-recomp's scripts/route.py writes, to compare the two runs line by line.
+ *
  * The ROM is read from the file at run time and is never part of the generated sources.
  * Time is not cycle accurate: a frame is a fixed number of executed blocks.
  * The IRQ is delivered at the line of $4209/$420A (vertical and combined modes; the horizontal position is
@@ -64,6 +69,60 @@ static void time_frame(void) {
     double t = now_us();
     fprintf(frame_times, "%.0f\n", t - frame_last);
     frame_last = t;
+}
+
+/* ---- WRAM sampling (--sample) ---- */
+
+#define MAX_SAMPLE 16
+#define MAX_SPAN 16
+static struct { FILE *f; uint32_t every; int n; uint32_t addr[MAX_SPAN], len[MAX_SPAN]; } sample[MAX_SAMPLE];
+static int nsample;
+
+static void sample_frame(void) {
+    int i, j;
+    uint32_t k;
+    for (i = 0; i < nsample; i++) {
+        if (frames % sample[i].every) continue;
+        fprintf(sample[i].f, "%u", (unsigned)frames);
+        for (j = 0; j < sample[i].n; j++) {
+            fprintf(sample[i].f, " %05X=", (unsigned)sample[i].addr[j]);
+            for (k = 0; k < sample[i].len[j]; k++) fprintf(sample[i].f, "%02X", wram[sample[i].addr[j] + k]);
+        }
+        fputc('\n', sample[i].f);
+    }
+}
+
+static void frame_all(void) {
+    if (frame_times) time_frame();
+    if (nsample) sample_frame();
+}
+
+static int parse_sample(char *arg) {
+    char *c1 = strchr(arg, ':'), *c2, *end, *tok;
+    unsigned long every;
+    if (!c1 || nsample == MAX_SAMPLE) return 0;
+    *c1++ = 0;
+    c2 = strchr(c1, ':');
+    if (!c2) return 0;
+    *c2++ = 0;
+    every = strtoul(c1, &end, 10);
+    if (*end || end == c1 || every == 0) return 0;
+    sample[nsample].every = (uint32_t)every;
+    for (tok = strtok(c2, ","); tok; tok = strtok(NULL, ",")) {
+        uint32_t a, len = 1;
+        char *colon = strchr(tok, ':');
+        if (colon) {
+            *colon++ = 0;
+            len = (uint32_t)strtoul(colon, &end, 10);
+            if (*end || end == colon || len == 0) return 0;
+        }
+        if (!parse_wram_addr(tok, &end, &a) || *end || a + len > 0x20000 || sample[nsample].n == MAX_SPAN) return 0;
+        sample[nsample].addr[sample[nsample].n] = a;
+        sample[nsample].len[sample[nsample].n++] = len;
+    }
+    if (sample[nsample].n == 0 || !(sample[nsample].f = fopen(arg, "w"))) return 0;
+    nsample++;
+    return 1;
 }
 
 void snes_set_window_icon(const unsigned *argb, int w, int h) { (void)argb; (void)w; (void)h; } /* no window */
@@ -134,6 +193,8 @@ int main(int argc, char **argv) {
                 fprintf(stderr, "error: cannot write %s\n", argv[i]);
                 return 2;
             }
+        } else if (!strcmp(argv[i], "--sample") && i + 1 < argc) {
+            if (!parse_sample(argv[++i])) { path = NULL; break; }
         } else if (!strcmp(argv[i], "--game-dir") && i + 1 < argc) {
             set_game_dir(argv[++i]);
         } else if (!strcmp(argv[i], "--dump") && i + 1 < argc) {
@@ -154,9 +215,12 @@ int main(int argc, char **argv) {
     }
     if (!load_rom(path)) return 2;
     if (wav_path && !wav_open(wav_path)) return 2;
-    if (frame_times) {
-        frame_hook = time_frame;
-        frame_last = now_us();
+    if (frame_times) frame_last = now_us();
+    if (frame_times || nsample) frame_hook = frame_all;
+    {
+        int rc = run_rom();
+        int i;
+        for (i = 0; i < nsample; i++) fclose(sample[i].f);
+        return rc;
     }
-    return run_rom();
 }
