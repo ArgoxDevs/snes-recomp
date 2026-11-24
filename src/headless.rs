@@ -502,21 +502,21 @@ fn the_menu_answers_to_taps_on_its_tabs_rows_and_values() {
         run_hooked_with(name, true, &HOOKED_ROM, &[0x8000, 0x8100], OPT_CFG, OPT_C, &args, &[("config.ini", ini)])
     };
     // taps are points on the 256x224 picture of the menu: the Game tab (last of four) is at about x 200, y 42; the first row
-    // after the fast forward one (the language) is at y 63; its value is at the right (x > 180 steps up, x < 150 down)
-    let Some(r) = run("tap-right", b"game.language = en\n", "F1,tap@200:42,tap@215:65,tap@2:2") else { return };
+    // after the fast forward one (the language) is at y 72; its value is at the right (x > 180 steps up, x < 150 down)
+    let Some(r) = run("tap-right", b"game.language = en\n", "F1,tap@200:42,tap@215:72,tap@2:2") else { return };
     assert_eq!(r.code, 0, "{}", r.out);
     assert!(config_lines(&r).contains(&"game.language = es"), "the right half of the value steps up\n{}", r.out);
     // the left half steps down (the list goes round), and tapping outside the panel closes the menu and saves
-    let Some(r) = run("tap-left", b"game.language = en\n", "F1,tap@200:42,tap@150:65,tap@2:2") else { return };
+    let Some(r) = run("tap-left", b"game.language = en\n", "F1,tap@200:42,tap@150:72,tap@2:2") else { return };
     assert!(config_lines(&r).contains(&"game.language = es"), "{}", r.out);
     // a tap on the name of an option goes to the next value, as Enter does
-    let Some(r) = run("tap-label", b"game.language = en\n", "F1,tap@200:42,tap@60:65,tap@2:2") else { return };
+    let Some(r) = run("tap-label", b"game.language = en\n", "F1,tap@200:42,tap@60:72,tap@2:2") else { return };
     assert!(config_lines(&r).contains(&"game.language = es"), "{}", r.out);
     // without the tab tap the first tab (Image) is shown, so the same tap on the value row changes another option, not the language
-    let Some(r) = run("tap-other-tab", b"game.language = en\n", "F1,tap@215:65,tap@2:2") else { return };
+    let Some(r) = run("tap-other-tab", b"game.language = en\n", "F1,tap@215:72,tap@2:2") else { return };
     assert!(config_lines(&r).contains(&"game.language = en"), "{}", r.out);
     // Quit asks first: a tap on the notice would quit, a tap anywhere else cancels (the menu is still there to close it)
-    let Some(r) = run("tap-quit-cancel", b"game.language = en\n", "F1,tap@200:42,tap@60:108,tap@128:100,tap@215:65,tap@2:2") else { return };
+    let Some(r) = run("tap-quit-cancel", b"game.language = en\n", "F1,tap@200:42,tap@60:128,tap@128:100,tap@215:72,tap@2:2") else { return };
     assert_eq!(r.code, 0, "{}", r.out);
     assert!(config_lines(&r).contains(&"game.language = es"), "cancelling the question leaves the menu working\n{}", r.out);
 }

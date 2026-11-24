@@ -448,21 +448,24 @@ static int view_lines(void) {
  * magnified by a whole factor so its pixels stay sharp: `layer_geom` gives the factor (a window of 270 lines per factor, as
  * far as the width allows) and the corner of the layer in a window of w x h; `layer_pt` takes a window point to the layer
  * (-1, -1 outside it). */
+#define MENU_H 270 /* lines of the layer of the menu: the 224 of the picture and room for the rows to breathe */
+static int layer_dy; /* lines the layer is shifted down (the slot picker is 224 tall and sits in the middle) */
+
 static void layer_geom(int w, int h, int *s, int *ox, int *oy) {
-    int k = h / 270;
+    int k = h / MENU_H;
     if (w / SCREEN_W < k) k = w / SCREEN_W;
     if (k < 1) k = 1;
     *s = k;
     *ox = (w - SCREEN_W * k) / 2;
-    *oy = (h - SCREEN_H * k) / 2;
+    *oy = (h - MENU_H * k) / 2;
 }
 
 static void layer_pt(int px, int py, int w, int h, int *cx, int *cy) {
     int s, ox, oy;
     layer_geom(w, h, &s, &ox, &oy);
-    if (px < ox || py < oy || px >= ox + SCREEN_W * s || py >= oy + SCREEN_H * s) { *cx = *cy = -1; return; }
+    if (px < ox || py < oy || px >= ox + SCREEN_W * s || py >= oy + MENU_H * s) { *cx = *cy = -1; return; }
     *cx = (px - ox) / s;
-    *cy = (py - oy) / s;
+    *cy = (py - oy) / s - layer_dy;
 }
 
 static void layer_draw(int w, int h, int use_gl);
@@ -685,8 +688,8 @@ static void set_fullscreen(int on) {
 /* ---- the menu (F1) ---- */
 
 /* The look (font, panel, cursor) is in play_ui.h; this is what the menu holds and does. */
-static uint8_t fb_menu[SCREEN_H * SCREEN_W * 3];
-static Canvas cv = {fb_menu, SCREEN_W, SCREEN_H};
+static uint8_t fb_menu[MENU_H * SCREEN_W * 3];
+static Canvas cv = {fb_menu, SCREEN_W, MENU_H};
 
 enum { TAB_IMAGE, TAB_AUDIO, TAB_CONTROLS, TAB_GAME, TAB_TOUCH, TAB_COUNT };
 static const char *const tab_names[TAB_COUNT] = {"Image", "Audio", "Controls", "Game", "Touch"};
@@ -1374,10 +1377,10 @@ static void bind_cell(char *out, size_t n, int dev, int player, int button) {
 }
 
 /* Where the panel puts things (the picture is 256 by 224). */
-enum { PX = 10, PY = 6, PW = 236, PH = 214, ROW_X = 22, ROW_W = 212, ROW_Y = 52, ROW_H = 11, VAL_R = 228, VAL_W = 92 };
+enum { PX = 10, PY = 6, PW = 236, PH = 214, DPH = 256, ROW_X = 22, ROW_W = 212, ROW_Y = 54, ROW_H = 14, VAL_R = 228, VAL_W = 92 };
 /* The Controls tab has its own rows, a little closer, under a line with the names of the two columns. */
-enum { CTL_HEAD = 51, CTL_Y = 61, CTL_H = 10, CTL_X0 = 12, CTL_ROWW = 142, CTL_LAB = 24, CTL_PAD = 108, CTL_PADW = 40,
-       CTL_RX = 158, CTL_RW = 84, CTL_SEGW = 64, CTL_PADY = 63, CTL_BOXY = 112 };
+enum { CTL_HEAD = 53, CTL_Y = 65, CTL_H = 13, CTL_X0 = 12, CTL_ROWW = 142, CTL_LAB = 24, CTL_PAD = 108, CTL_PADW = 40,
+       CTL_RX = 158, CTL_RW = 84, CTL_SEGW = 64, CTL_PADY = 67, CTL_BOXY = 130 };
 
 static const char *const btn_labels[12] = {"B", "Y", "Select", "Start", "Up", "Down", "Left", "Right", "A", "X", "L", "R"};
 
@@ -1565,7 +1568,7 @@ static void menu_draw(const uint8_t *fb) {
     int i, t, x, n = menu_count(menu_tab), s = menu_sel[menu_tab];
     const char *help;
     ui_backdrop(&cv, fb);
-    ui_panel(&cv, PX, PY, PW, PH);
+    ui_panel(&cv, PX, PY, PW, DPH);
     text_draw2x(&cv, PX + (PW - text_w2x(tr("OPTIONS"))) / 2, PY + 7, tr("OPTIONS"), UI_GOLD, UI_SHADOW);
     ui_rule(&cv, PX + 10, PY + 25, PW - 20);
     for (t = 0; t < tab_count(); t++) {
@@ -1641,12 +1644,12 @@ static void menu_draw(const uint8_t *fb) {
             break;
         }
     }
-    if (menu_msg[0]) { text_fit(line, sizeof line, menu_msg, PW - 24); text_center(&cv, PX, PW, PY + PH - 26, line, UI_WARN); }
-    ui_rule(&cv, PX + 10, PY + PH - 17, PW - 20);
+    if (menu_msg[0]) { text_fit(line, sizeof line, menu_msg, PW - 24); text_center(&cv, PX, PW, PY + DPH - 26, line, UI_WARN); }
+    ui_rule(&cv, PX + 10, PY + DPH - 17, PW - 20);
     help = tr(menu_capture >= 0 ? "Press the key or button   Esc: cancel"
          : menu_by_pad ? "L/R: tabs   A: select   B: close"
          : "Q/W: tabs   Enter: select   Esc: close");
-    text_center(&cv, PX, PW, PY + PH - 13, help, UI_DIM);
+    text_center(&cv, PX, PW, PY + DPH - 13, help, UI_DIM);
     menu_tick++;
 }
 
@@ -2032,6 +2035,7 @@ static void overlay_compose(void (*draw)(const uint8_t *)) {
     static uint8_t mid[SCREEN_H * SCREEN_W * 3];
     int w = fb_front_w, e = (w - SCREEN_W) / 2, x, y;
     for (y = 0; y < SCREEN_H; y++) memcpy(mid + (size_t)y * SCREEN_W * 3, fb_front + ((size_t)y * w + e) * 3, SCREEN_W * 3);
+    ui_src_h = SCREEN_H;
     draw(mid);
     for (y = 0; y < SCREEN_H; y++) {
         const uint8_t *src = fb_front + (size_t)y * w * 3;
@@ -2088,12 +2092,12 @@ static int menu_tap_canvas(int cx, int cy) {
     menu_lang_sync();
     if (touch_on) return mm_tap(cx, cy);
     if (menu_confirm || menu_ask || menu_capture >= 0) {
-        int on_notice = cx >= PX && cx < PX + PW && cy >= PY + PH - 30 && cy < PY + PH - 17;
+        int on_notice = cx >= PX && cx < PX + PW && cy >= PY + DPH - 30 && cy < PY + DPH - 17;
         menu_key(on_notice && menu_capture < 0 ? SDL_SCANCODE_RETURN : SDL_SCANCODE_ESCAPE);
         menu_by_pad = 1;
         return 1;
     }
-    if (cx < PX || cx >= PX + PW || cy < PY || cy >= PY + PH) { menu_close(); return 1; }
+    if (cx < PX || cx >= PX + PW || cy < PY || cy >= PY + DPH) { menu_close(); return 1; }
     for (i = 0; i < tab_count(); i++) {
         menu_tab_span(i, &x, &tw);
         if (cx >= x && cx < x + tw + tab_gap() && cy >= PY + 28 && cy < PY + 46) {
@@ -2224,7 +2228,7 @@ static int parse_log_wram(char *arg) {
 
 #include "play_state.h"
 
-static uint8_t layer_rgba[SCREEN_W * SCREEN_H * 4];
+static uint8_t layer_rgba[SCREEN_W * MENU_H * 4];
 enum { LAYER_DIM = 150 }; /* how much of black dims the game under the menu, 0 to 255 */
 
 /* Draws the menu (or the slot picker) over the window: the game dimmed, then the 256x224 layer magnified by a whole factor.
@@ -2233,28 +2237,31 @@ static void layer_draw(int w, int h, int use_gl) {
     int s, ox, oy, i;
     SDL_Rect d;
     if (menu_in_picture || (!menu_open && !slot_open)) return;
+    ui_src_h = SCREEN_H;
     ui_key_mode = 1;
     if (slot_open) slot_draw(fb_front); else menu_draw(fb_front);
     ui_key_mode = 0;
-    for (i = 0; i < SCREEN_W * SCREEN_H; i++) {
-        const uint8_t *p = fb_menu + (size_t)i * 3;
+    layer_dy = slot_open ? (MENU_H - SCREEN_H) / 2 : 0;
+    for (i = 0; i < SCREEN_W * MENU_H; i++) {
+        int row = i / SCREEN_W - layer_dy;
+        const uint8_t *p = fb_menu + (size_t)(row < 0 || row >= (slot_open ? SCREEN_H : MENU_H) ? 0 : i - layer_dy * SCREEN_W) * 3;
         uint8_t *q = layer_rgba + (size_t)i * 4;
         q[0] = p[0]; q[1] = p[1]; q[2] = p[2];
-        q[3] = p[0] == 0xFF && p[1] == 0x00 && p[2] == 0xFF ? 0 : 255;
+        q[3] = row < 0 || row >= (slot_open ? SCREEN_H : MENU_H) || (p[0] == 0xFF && p[1] == 0x00 && p[2] == 0xFF) ? 0 : 255;
     }
     layer_geom(w, h, &s, &ox, &oy);
-    if (use_gl) { gl_layer(layer_rgba, SCREEN_W, SCREEN_H, w, h, ox, oy, s, LAYER_DIM); return; }
+    if (use_gl) { gl_layer(layer_rgba, SCREEN_W, MENU_H, w, h, ox, oy, s, LAYER_DIM); return; }
     SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(ren, 0, 0, 16, LAYER_DIM);
     SDL_RenderFillRect(ren, NULL);
     if (!layer_tex) {
-        layer_tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, SCREEN_W, SCREEN_H);
+        layer_tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, SCREEN_W, MENU_H);
         if (!layer_tex) return;
         SDL_SetTextureBlendMode(layer_tex, SDL_BLENDMODE_BLEND);
         SDL_SetTextureScaleMode(layer_tex, SDL_ScaleModeNearest);
     }
     SDL_UpdateTexture(layer_tex, NULL, layer_rgba, SCREEN_W * 4);
-    d.x = ox; d.y = oy; d.w = SCREEN_W * s; d.h = SCREEN_H * s;
+    d.x = ox; d.y = oy; d.w = SCREEN_W * s; d.h = MENU_H * s;
     SDL_RenderCopy(ren, layer_tex, NULL, &d);
 }
 
@@ -2717,7 +2724,7 @@ static void play_frame(void) {
         if (menu_shot_slot && !slot_open) slot_open_now();
         if (slot_open) overlay_compose(slot_draw);
         else { menu_open = 1; menu_tab = menu_shot_page; menu_compose(); }
-        if (!write_png(menu_shot_path, fb_menu, SCREEN_W, SCREEN_H)) fprintf(stderr, "error: cannot write %s\n", menu_shot_path);
+        if (!write_png(menu_shot_path, fb_menu, SCREEN_W, MENU_H)) fprintf(stderr, "error: cannot write %s\n", menu_shot_path);
         else {
             uint32_t h = 2166136261u; /* FNV-1a of the picture, so the tests can tell two captures apart */
             size_t i;

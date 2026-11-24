@@ -7,12 +7,12 @@
 
 ## 2. Controles (primera pestaña en el lienzo nuevo)
 
-- [ ] 2.1 Lista, mando SNES, detalle y selector Teclado/Mando con el espacio nuevo (ya hecho a 256x224; trasladar)
-- [ ] 2.2 Número de jugadores del perfil (`profile-players`): sin selector de jugador en juegos de uno
+- [x] 2.1 Lista, mando SNES, detalle y selector Teclado/Mando con el espacio nuevo (capa de 256x270, filas de 13)
+- [x] 2.2 Número de jugadores del perfil (`profile-players`): sin selector de jugador en juegos de uno
 
 ## 3. Resto de pestañas
 
-- [ ] 3.1 Imagen, Audio, Juego, Táctil: filas con aire, valores alineados, descripción de la fila elegida, pie con teclas
+- [~] 3.1 (filas de 14 hechas; faltan descripción de la fila y pie por pestaña) Imagen, Audio, Juego, Táctil: filas con aire, valores alineados, descripción de la fila elegida, pie con teclas
 - [ ] 3.2 Desplazamiento de listas largas
 
 ## 4. Selector de ranuras y menú del móvil

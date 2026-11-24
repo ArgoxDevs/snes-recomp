@@ -251,12 +251,19 @@ static void ui_dim_pixel(uint8_t *dst, const uint8_t *src) {
  * which the window turns into a see-through pixel (the game shows through, dimmed by the window). */
 #define UI_KEY 0xFF00FFu
 static int ui_key_mode;
+static int ui_src_h; /* rows of `src` that ui_backdrop may read (0: all of the canvas); the rows below are plain backdrop */
 
 /* The picture `src` (same size as the canvas) darkened and tinted blue, as the backdrop of the menu. */
 static void ui_backdrop(Canvas *c, const uint8_t *src) {
     size_t i, n = (size_t)c->w * c->h;
     if (ui_key_mode) {
         for (i = 0; i < n; i++) { c->px[i * 3] = 0xFF; c->px[i * 3 + 1] = 0x00; c->px[i * 3 + 2] = 0xFF; }
+        return;
+    }
+    if (ui_src_h > 0 && ui_src_h < c->h) {
+        size_t m = (size_t)c->w * ui_src_h;
+        for (i = 0; i < m; i++) ui_dim_pixel(c->px + i * 3, src + i * 3);
+        for (; i < n; i++) { c->px[i * 3] = 0; c->px[i * 3 + 1] = 0; c->px[i * 3 + 2] = 16; }
         return;
     }
     for (i = 0; i < n; i++) ui_dim_pixel(c->px + i * 3, src + i * 3);
