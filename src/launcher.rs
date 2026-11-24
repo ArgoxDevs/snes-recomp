@@ -54,6 +54,16 @@ pub enum Key {
     Updating,
     UpdateDone,
     UpdateFailed,
+    UpdateInstall,
+    UpdateSkip,
+    UpdateLater,
+    CheckNow,
+    Checking,
+    Licences,
+    /// `{v}` is replaced.
+    VersionLabel,
+    /// What the language button says: the language it is in now.
+    LangButton,
 }
 
 pub fn text(lang: Lang, key: Key) -> &'static str {
@@ -84,12 +94,20 @@ pub fn text(lang: Lang, key: Key) -> &'static str {
             GameFailedTitle => "The game stopped with an error",
             UpdateCheckbox => "Check for updates (uses the Internet)",
             UpdateTitle => "New version",
-            UpdateAsk => "Version {tag} is available (you have {current}).\n\nYes: download and install it now (your saves stay).\nNo: not now.\nCancel: skip this version.",
+            UpdateAsk => "Version {tag} is available (you have {current}).\n\nIt is downloaded, checked and installed over this one. Your saves stay.",
             UpdateUpToDate => "You are up to date.",
             UpdateUnreachable => "Could not check for updates (is there an Internet connection?).",
             Updating => "Downloading and installing the new version. Do not close the window...",
             UpdateDone => "Updated. The launcher restarts.",
             UpdateFailed => "Could not update:",
+            UpdateInstall => "Download and install",
+            UpdateSkip => "Skip this version",
+            UpdateLater => "Not now",
+            CheckNow => "Check now",
+            Checking => "Checking...",
+            Licences => "Licences",
+            VersionLabel => "Version {v}",
+            LangButton => "EN",
         },
         Lang::Es => match key {
             WindowTitle => "snes-port",
@@ -116,12 +134,20 @@ pub fn text(lang: Lang, key: Key) -> &'static str {
             GameFailedTitle => "El juego se cerró con un error",
             UpdateCheckbox => "Buscar actualizaciones (usa Internet)",
             UpdateTitle => "Versión nueva",
-            UpdateAsk => "Hay una versión nueva: {tag} (tienes la {current}).\n\nSí: descargarla e instalarla ahora (las partidas se conservan).\nNo: ahora no.\nCancelar: omitir esta versión.",
+            UpdateAsk => "Hay una versión nueva: {tag} (tienes la {current}).\n\nSe descarga, se comprueba y se instala encima de esta. Las partidas se conservan.",
             UpdateUpToDate => "Estás al día.",
             UpdateUnreachable => "No se pudo comprobar si hay actualizaciones (¿hay conexión a Internet?).",
             Updating => "Descargando e instalando la versión nueva. No cierres la ventana...",
             UpdateDone => "Actualizado. El lanzador se reinicia.",
             UpdateFailed => "No se pudo actualizar:",
+            UpdateInstall => "Descargar e instalar",
+            UpdateSkip => "Omitir esta versión",
+            UpdateLater => "Ahora no",
+            CheckNow => "Buscar ahora",
+            Checking => "Buscando...",
+            Licences => "Licencias",
+            VersionLabel => "Versión {v}",
+            LangButton => "ES",
         },
     }
 }
@@ -147,6 +173,57 @@ pub enum Screen {
     Ask(String),
     /// Why it stopped: the title and the detail, to read and copy.
     Failed { title: String, detail: String },
+    /// A new version: what to say and its tag (to skip it).
+    Update { tag: String, text: String },
+    /// The licences of the third-party parts, to read.
+    Licences(String),
+}
+
+/// The language the person chose with the language button (`lang.txt` in the cache), if they did.
+pub fn load_lang(cache: &Path) -> Option<Lang> {
+    match std::fs::read_to_string(cache.join("lang.txt")).ok()?.trim() {
+        "en" => Some(Lang::En),
+        "es" => Some(Lang::Es),
+        _ => None,
+    }
+}
+
+pub fn save_lang(cache: &Path, lang: Lang) {
+    let _ = std::fs::create_dir_all(cache);
+    let _ = std::fs::write(cache.join("lang.txt"), if lang == Lang::Es { "es\n" } else { "en\n" });
+}
+
+pub fn other_lang(lang: Lang) -> Lang {
+    if lang == Lang::Es {
+        Lang::En
+    } else {
+        Lang::Es
+    }
+}
+
+/// The licences of what travels with the program and is not ours (the C compiler, SDL2) and of the engine itself: the
+/// texts the package carries next to the executable, one after the other. What is missing is said, not hidden.
+pub fn licence_text(lang: Lang, exe_dir: &Path) -> String {
+    let intro = match lang {
+        Lang::En => "snes-port is free software. It carries TinyCC (LGPL 2.1, as the separate files in toolchain\\tcc, which can be replaced) and SDL2 (zlib). Your ROM is not part of the program and is never copied or sent anywhere.",
+        Lang::Es => "snes-port es software libre. Lleva TinyCC (LGPL 2.1, como ficheros aparte en toolchain\\tcc, que se pueden sustituir) y SDL2 (zlib). Tu ROM no forma parte del programa y nunca se copia ni se envía a ningún sitio.",
+    };
+    let mut out = intro.to_string();
+    let files = ["LICENSE", "LICENSE-engine", "toolchain/AVISO-TINYCC.txt", "toolchain/tcc/COPYING", "toolchain/tcc/doc/COPYING", "sdl2/COPYING.txt"];
+    let mut found = false;
+    for f in files {
+        if let Ok(t) = std::fs::read_to_string(exe_dir.join(f)) {
+            found = true;
+            out.push_str(&format!("\n\n---- {f} ----\n\n{}", t.replace("\r\n", "\n").trim()));
+        }
+    }
+    if !found {
+        out.push_str(match lang {
+            Lang::En => "\n\nThe license files were not found next to the program.",
+            Lang::Es => "\n\nNo se encuentran los ficheros de licencia junto al programa.",
+        });
+    }
+    out
 }
 
 /// The screen to open with: the remembered ROM if it is still there, else the choice.
@@ -234,6 +311,7 @@ mod tests {
         let all = [
             WindowTitle, Tagline, PickPrompt, PickTitle, PickFilter, PickAction, ChangeAction, PlayAction, PlayWith, FirstBuild, Working, CopyDetail,
             Copied, Close, ChooseAnother, DownloadYes, DownloadNo, ErrorTitle, UnknownRomTitle, NoCompilerTitle, BuildFailedTitle, GameFailedTitle,
+            UpdateInstall, UpdateSkip, UpdateLater, CheckNow, Checking, Licences, VersionLabel, LangButton,
         ];
         for k in all {
             let (en, es) = (text(Lang::En, k), text(Lang::Es, k));
@@ -293,6 +371,29 @@ mod tests {
         let s = shorten_path(long, 30);
         assert_eq!(s.chars().count(), 30);
         assert!(s.starts_with("...") && s.ends_with(r"snes-port\toolchain"), "{s}");
+    }
+
+    #[test]
+    fn the_chosen_language_is_remembered_and_a_bad_file_is_ignored() {
+        let dir = temp("lang");
+        assert_eq!(load_lang(&dir), None);
+        save_lang(&dir, Lang::Es);
+        assert_eq!(load_lang(&dir), Some(Lang::Es));
+        save_lang(&dir, other_lang(Lang::Es));
+        assert_eq!(load_lang(&dir), Some(Lang::En));
+        std::fs::write(dir.join("lang.txt"), "fr").unwrap();
+        assert_eq!(load_lang(&dir), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_licences_say_what_they_carry_and_what_is_missing() {
+        let dir = temp("licences");
+        assert!(licence_text(Lang::En, &dir).contains("not found"));
+        std::fs::write(dir.join("LICENSE"), "MIT text\r\n").unwrap();
+        let t = licence_text(Lang::Es, &dir);
+        assert!(t.contains("TinyCC") && t.contains("---- LICENSE ----") && t.contains("MIT text") && !t.contains("No se encuentran"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

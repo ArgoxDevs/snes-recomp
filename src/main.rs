@@ -268,13 +268,25 @@ fn print_instr(rom: &Rom, ins: &disasm::Instr) {
     println!("{}  {:<12}{}", fmt_addr(ins.addr), bytes.join(" "), ins.text());
 }
 
-/// True when the program was started as `snes-port` (the same program, under that name).
+/// True when the program was started as the launcher: it is one program with two faces, the generator (`snes-recomp`)
+/// and the launcher, and any other name (`snes-port`, or the name of a game: `alttp-recomp`) is the second one.
 fn started_as_port() -> bool {
-    std::env::args_os().next().and_then(|a| PathBuf::from(a).file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase())).is_some_and(|s| s == "snes-port")
+    std::env::args_os().next().and_then(|a| PathBuf::from(a).file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase())).is_some_and(|s| s != "snes-recomp")
 }
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().collect();
+    let mut args: Vec<String> = std::env::args().collect();
+    // `alttp-recomp recomp scan ...`: the generator's command line from the executable of a game, which has no second one
+    if started_as_port() && args.get(1).is_some_and(|a| a == "recomp") {
+        args.remove(1);
+        return match run(args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     if started_as_port() || args.get(1).is_some_and(|a| a == "port") {
         let skip = if started_as_port() { 1 } else { 2 };
         let code = port::main(&args[skip.min(args.len())..]);

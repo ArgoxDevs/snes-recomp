@@ -33,7 +33,6 @@ const WS_CAPTION: u32 = 0x00C0_0000;
 const WS_SYSMENU: u32 = 0x0008_0000;
 const WS_MINIMIZEBOX: u32 = 0x0002_0000;
 const WS_CHILD: u32 = 0x4000_0000;
-const WS_VISIBLE: u32 = 0x1000_0000;
 const WS_TABSTOP: u32 = 0x0001_0000;
 const WS_VSCROLL: u32 = 0x0020_0000;
 const WS_BORDER: u32 = 0x0080_0000;
@@ -60,17 +59,12 @@ const ID_PRIMARY: i32 = 1;
 const ID_SECONDARY: i32 = 2;
 const ID_COPY: i32 = 3;
 const ID_UPDATE: i32 = 4;
-const BS_AUTOCHECKBOX: u32 = 3;
-const BM_GETCHECK: u32 = 0x00F0;
-const BM_SETCHECK: u32 = 0x00F1;
-const WM_CTLCOLORBTN: u32 = 0x0135;
+const ID_LANG: i32 = 5;
+const ID_LICENCES: i32 = 6;
+const ID_CHECK: i32 = 7;
 const MB_OK: u32 = 0;
-const MB_YESNOCANCEL: u32 = 3;
 const MB_ICONERROR: u32 = 0x10;
-const MB_ICONQUESTION: u32 = 0x20;
 const MB_ICONINFORMATION: u32 = 0x40;
-const IDCANCEL: i32 = 2;
-const IDYES: i32 = 6;
 
 const WM_PAINT: u32 = 0x000F;
 const WM_ERASEBKGND: u32 = 0x0014;
@@ -83,24 +77,44 @@ const DT_VCENTER: u32 = 0x0004;
 const DT_SINGLELINE: u32 = 0x0020;
 const DT_END_ELLIPSIS: u32 = 0x8000;
 const DT_NOPREFIX: u32 = 0x0800;
-const IMAGE_ICON: u32 = 1;
-const DI_NORMAL: u32 = 3;
 
-// The look: a dark header with the icon over a light page, one accent colour (the cyan of the icon). COLORREF is 0x00BBGGRR.
-const HEADER: u32 = 0x003B_2214;
-const HEADER_ERROR: u32 = 0x0022_1E5A;
-const STRIPE: u32 = 0x00E6_D84F;
-const STRIPE_ERROR: u32 = 0x0058_58E0;
-const PAGE: u32 = 0x00FA_F7F5;
-const INK: u32 = 0x0033_291F;
-const HEADER_TITLE: u32 = 0x00FF_FFFF;
-const HEADER_SUB: u32 = 0x00C8_B39F;
-const ACCENT: u32 = 0x00A8_8C1B;
-const ACCENT_PRESSED: u32 = 0x0088_7016;
-const HEADER_H: i32 = 84;
-const STRIPE_H: i32 = 3;
+// The look, the same as the Android and Linux launchers (`ZeldaUi.java`, `linux/launcher.c`): dark green stone with a faint
+// checkerboard, a bevelled gold frame with a diamond in each corner, the Triforce and plate buttons. The numbers are
+// 0xRRGGBB and `rgb` turns them into the COLORREF (0x00BBGGRR) that GDI wants.
+const OUTLINE: u32 = 0x2A1A06;
+const GOLD_HI: u32 = 0xFFF0A0;
+const GOLD: u32 = 0xF8D860;
+const GOLD_LO: u32 = 0xC08820;
+const STONE: u32 = 0x1C3A2A;
+const STONE_HI: u32 = 0x2E5A40;
+const PRESS: u32 = 0x48B070;
+const SHADOW: u32 = 0x28180A;
+const TEXT: u32 = 0xC8D8B8;
+const TEXT_HI: u32 = 0xFFFCE8;
+const BG_TOP: u32 = 0x0C1C14;
+const BG_BOTTOM: u32 = 0x1A3828;
+const ERROR_TITLE: u32 = 0xFF9A8A;
+const DIM: u32 = 0x8FA890;
 const CLIENT_W: i32 = 540;
 const CLIENT_H: i32 = 340;
+const WS_CLIPCHILDREN: u32 = 0x0200_0000;
+const DC_BRUSH: i32 = 18;
+const SRCCOPY: u32 = 0x00CC_0020;
+const DT_WORDBREAK: u32 = 0x0010;
+const DT_TOP: u32 = 0;
+
+fn rgb(c: u32) -> u32 {
+    ((c & 0xFF) << 16) | (c & 0xFF00) | (c >> 16)
+}
+
+/// `a` towards `b` by `n` parts of `d`, channel by channel.
+fn mix(a: u32, b: u32, n: i32, d: i32) -> u32 {
+    let ch = |sh: u32| {
+        let (x, y) = (((a >> sh) & 0xFF) as i32, ((b >> sh) & 0xFF) as i32);
+        (x + (y - x) * n / d.max(1)) as u32
+    };
+    (ch(16) << 16) | (ch(8) << 8) | ch(0)
+}
 
 #[repr(C)]
 struct Point {
@@ -217,17 +231,12 @@ extern "system" {
     fn CloseClipboard() -> i32;
     fn GetDC(h: Hwnd) -> isize;
     fn ReleaseDC(h: Hwnd, dc: isize) -> i32;
-    fn GetSysColorBrush(index: i32) -> isize;
     fn InvalidateRect(h: Hwnd, r: *const Rect, erase: i32) -> i32;
     fn UpdateWindow(h: Hwnd) -> i32;
     fn BeginPaint(h: Hwnd, ps: *mut PaintStruct) -> isize;
     fn EndPaint(h: Hwnd, ps: *const PaintStruct) -> i32;
-    fn GetClientRect(h: Hwnd, r: *mut Rect) -> i32;
     fn FillRect(dc: isize, r: *const Rect, brush: isize) -> i32;
     fn DrawTextW(dc: isize, text: *const u16, n: i32, r: *mut Rect, format: u32) -> i32;
-    fn DrawIconEx(dc: isize, x: i32, y: i32, icon: isize, cx: i32, cy: i32, step: u32, brush: isize, flags: u32) -> i32;
-    fn DrawFocusRect(dc: isize, r: *const Rect) -> i32;
-    fn LoadImageW(inst: isize, name: usize, kind: u32, cx: i32, cy: i32, flags: u32) -> isize;
     fn GetWindowTextW(h: Hwnd, buf: *mut u16, n: i32) -> i32;
     fn MessageBoxW(h: Hwnd, text: *const u16, caption: *const u16, kind: u32) -> i32;
 }
@@ -239,10 +248,15 @@ extern "system" {
     fn SetBkMode(dc: isize, mode: i32) -> i32;
     fn SetTextColor(dc: isize, color: u32) -> u32;
     fn CreateSolidBrush(color: u32) -> isize;
-    fn CreatePen(style: i32, width: i32, color: u32) -> isize;
     fn SelectObject(dc: isize, obj: isize) -> isize;
     fn DeleteObject(obj: isize) -> i32;
-    fn RoundRect(dc: isize, l: i32, t: i32, r: i32, b: i32, w: i32, h: i32) -> i32;
+    fn SetBkColor(dc: isize, color: u32) -> u32;
+    fn SetDCBrushColor(dc: isize, color: u32) -> u32;
+    fn GetStockObject(i: i32) -> isize;
+    fn CreateCompatibleDC(dc: isize) -> isize;
+    fn CreateCompatibleBitmap(dc: isize, w: i32, h: i32) -> isize;
+    fn DeleteDC(dc: isize) -> i32;
+    fn BitBlt(dst: isize, x: i32, y: i32, w: i32, h: i32, src: isize, sx: i32, sy: i32, rop: u32) -> i32;
 }
 
 #[link(name = "comdlg32")]
@@ -305,7 +319,8 @@ pub fn ui_language() -> Lang {
 // ---- state shared by the threads ----
 
 struct Gui {
-    lang: Lang,
+    /// Spanish (true) or English: the person can switch it with the language button.
+    es: AtomicBool,
     cache: PathBuf,
     /// The window offers to choose a ROM (started without one), as opposed to a ROM given to the program.
     picks_rom: bool,
@@ -318,19 +333,61 @@ struct Gui {
 static GUI: OnceLock<Gui> = OnceLock::new();
 static EXIT: AtomicI32 = AtomicI32::new(0);
 
+fn lang() -> Lang {
+    if gui().es.load(Ordering::SeqCst) {
+        Lang::Es
+    } else {
+        Lang::En
+    }
+}
+
+/// The name the window carries: `name=` of `update.info` (the package of a game says its own), else the engine's.
+fn app_title() -> String {
+    let from_file = std::env::current_exe().ok().and_then(|e| std::fs::read_to_string(e.parent()?.join("update.info")).ok()).and_then(|t| {
+        t.lines().find_map(|l| l.strip_prefix("name=").map(|n| n.trim().to_string())).filter(|n| !n.is_empty())
+    });
+    from_file.unwrap_or_else(|| launcher::text(lang(), Key::WindowTitle).to_string())
+}
+
+/// The line under the title: `tagline=` of `update.info` (the name of the game), else the engine's, in the language of the window.
+fn app_tagline() -> String {
+    let from_file = std::env::current_exe().ok().and_then(|e| std::fs::read_to_string(e.parent()?.join("update.info")).ok()).and_then(|t| {
+        t.lines().find_map(|l| l.strip_prefix("tagline=").map(|n| n.trim().to_string())).filter(|n| !n.is_empty())
+    });
+    from_file.unwrap_or_else(|| launcher::text(lang(), Key::Tagline).to_string())
+}
+
+/// What the line under the body says (the version, or the answer of the last check).
+static STATUS: Mutex<String> = Mutex::new(String::new());
+
+fn set_status(text: &str) {
+    *STATUS.lock().unwrap() = text.to_string();
+    let h = gui().hwnd.load(Ordering::SeqCst);
+    if h != 0 {
+        unsafe { InvalidateRect(h, std::ptr::null(), 0) };
+    }
+}
+
 fn gui() -> &'static Gui {
     GUI.get().expect("launcher window not initialised")
 }
 
 struct Controls {
-    body: Hwnd,
     detail: Hwnd,
     primary: Hwnd,
     secondary: Hwnd,
     copy: Hwnd,
     /// The check box of the update notice (only when this installation updates itself).
     update: Hwnd,
+    lang: Hwnd,
+    licences: Hwnd,
+    check: Hwnd,
 }
+
+/// The state of that check box (it is drawn by hand, so it does not keep its own).
+static UPDATE_ON: AtomicBool = AtomicBool::new(false);
+/// The text of the body, painted by the window itself so that it sits on the stone without leaving traces.
+static BODY: Mutex<String> = Mutex::new(String::new());
 
 static CONTROLS: OnceLock<Controls> = OnceLock::new();
 
@@ -338,9 +395,10 @@ static CONTROLS: OnceLock<Controls> = OnceLock::new();
 struct Look {
     title: isize,
     sub: isize,
+    body: isize,
     button: isize,
-    page: isize,
-    icon: isize,
+    /// The dark stone behind the box with the detail of an error.
+    dark: isize,
 }
 
 static LOOK: OnceLock<Look> = OnceLock::new();
@@ -375,25 +433,25 @@ unsafe fn child(parent: Hwnd, class: &str, text: &str, style: u32, id: i32, x: i
 
 unsafe fn create_controls(hwnd: Hwnd) {
     let normal = font(10, 400);
-    let inst = GetModuleHandleW(std::ptr::null());
     let _ = LOOK.set(Look {
-        title: font(17, 600),
+        title: font(17, 700),
         sub: font(10, 400),
-        button: font(10, 600),
-        page: CreateSolidBrush(PAGE),
-        icon: LoadImageW(inst, 1, IMAGE_ICON, scale(56), scale(56), 0),
+        body: normal,
+        button: font(10, 700),
+        dark: CreateSolidBrush(rgb(BG_TOP)),
     });
-    let top = HEADER_H + STRIPE_H + 20;
-    let body = child(hwnd, "STATIC", "", WS_VISIBLE, 0, 24, top, 492, 150, normal);
-    let detail = child(hwnd, "EDIT", "", WS_BORDER | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_TABSTOP, 0, 24, top, 492, 150, normal);
-    let copy = child(hwnd, "BUTTON", "", WS_TABSTOP, ID_COPY, 24, 286, 150, 34, normal);
-    let secondary = child(hwnd, "BUTTON", "", WS_TABSTOP, ID_SECONDARY, 366, 286, 150, 34, normal);
-    let primary = child(hwnd, "BUTTON", "", WS_TABSTOP | BS_OWNERDRAW | BS_DEFPUSHBUTTON, ID_PRIMARY, 204, 286, 150, 34, normal);
-    let update = child(hwnd, "BUTTON", launcher::text(gui().lang, Key::UpdateCheckbox), WS_TABSTOP | BS_AUTOCHECKBOX, ID_UPDATE, 24, 256, 330, 22, normal);
+    let detail = child(hwnd, "EDIT", "", WS_BORDER | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_TABSTOP, 0, 32, 128, 476, 148, normal);
+    let copy = child(hwnd, "BUTTON", "", WS_TABSTOP | BS_OWNERDRAW, ID_COPY, 36, 286, 156, 34, normal);
+    let secondary = child(hwnd, "BUTTON", "", WS_TABSTOP | BS_OWNERDRAW, ID_SECONDARY, 360, 286, 144, 34, normal);
+    let primary = child(hwnd, "BUTTON", "", WS_TABSTOP | BS_OWNERDRAW | BS_DEFPUSHBUTTON, ID_PRIMARY, 198, 286, 156, 34, normal);
+    let update = child(hwnd, "BUTTON", launcher::text(lang(), Key::UpdateCheckbox), WS_TABSTOP | BS_OWNERDRAW, ID_UPDATE, 36, 254, 350, 22, normal);
+    let lang_btn = child(hwnd, "BUTTON", "", WS_TABSTOP | BS_OWNERDRAW, ID_LANG, 452, 24, 52, 24, normal);
+    let licences = child(hwnd, "BUTTON", "", WS_TABSTOP | BS_OWNERDRAW, ID_LICENCES, 36, 286, 120, 34, normal);
+    let check = child(hwnd, "BUTTON", "", WS_TABSTOP | BS_OWNERDRAW, ID_CHECK, 394, 252, 110, 26, normal);
     if update_info().is_some() {
-        SendMessageW(update, BM_SETCHECK, update::load_settings(&gui().cache).check as usize, 0);
+        UPDATE_ON.store(update::load_settings(&gui().cache).check, Ordering::SeqCst);
     }
-    let _ = CONTROLS.set(Controls { body, detail, primary, secondary, copy, update });
+    let _ = CONTROLS.set(Controls { lang: lang_btn, licences, check, detail, primary, secondary, copy, update });
 }
 
 fn set_text(h: Hwnd, s: &str) {
@@ -416,44 +474,50 @@ fn supported_games() -> String {
 fn draw(screen: &Screen) {
     let g = gui();
     let c = CONTROLS.get().expect("controls");
-    let t = |k: Key| launcher::text(g.lang, k);
+    let t = |k: Key| launcher::text(lang(), k);
     let games = supported_games();
-    let (body, detail, primary, secondary, copy): (String, Option<String>, Option<&str>, Option<&str>, bool) = match screen {
+    let (body, detail, primary, secondary, third): (String, Option<String>, Option<&str>, Option<&str>, Option<&str>) = match screen {
         Screen::Pick => (
             if games.is_empty() { t(Key::PickPrompt).to_string() } else { format!("{games}\n\n{}", t(Key::PickPrompt)) },
             None,
             Some(t(Key::PickAction)),
             None,
-            false,
-        ),
-        Screen::Ready(rom) => (
-            format!("{}\n\n{}", t(Key::PlayWith), launcher::rom_label(rom)),
             None,
-            Some(t(Key::PlayAction)),
-            Some(t(Key::ChangeAction)),
-            false,
         ),
-        Screen::Busy(text) => (text.clone(), None, None, None, false),
-        Screen::Ask(text) => (text.clone(), None, Some(t(Key::DownloadYes)), Some(t(Key::DownloadNo)), false),
-        Screen::Failed { detail, .. } => (String::new(), Some(detail.clone()), if g.picks_rom { Some(t(Key::ChooseAnother)) } else { None }, Some(t(Key::Close)), true),
+        Screen::Ready(rom) => (format!("{}\n\n{}", t(Key::PlayWith), launcher::rom_label(rom)), None, Some(t(Key::PlayAction)), Some(t(Key::ChangeAction)), None),
+        Screen::Busy(text) => (text.clone(), None, None, None, None),
+        Screen::Ask(text) => (text.clone(), None, Some(t(Key::DownloadYes)), Some(t(Key::DownloadNo)), None),
+        Screen::Failed { detail, .. } => (
+            String::new(),
+            Some(detail.clone()),
+            if g.picks_rom { Some(t(Key::ChooseAnother)) } else { None },
+            Some(t(Key::Close)),
+            Some(t(Key::CopyDetail)),
+        ),
+        Screen::Update { text, .. } => (text.clone(), None, Some(t(Key::UpdateInstall)), Some(t(Key::UpdateLater)), Some(t(Key::UpdateSkip))),
+        Screen::Licences(text) => (String::new(), Some(text.clone()), None, Some(t(Key::Close)), None),
     };
-    set_text(c.body, &body);
-    show_control(c.body, detail.is_none());
+    *BODY.lock().unwrap() = body;
     show_control(c.detail, detail.is_some());
     if let Some(d) = &detail {
         set_text(c.detail, &crlf(d));
     }
-    for (h, label) in [(c.primary, primary), (c.secondary, secondary)] {
+    for (h, label) in [(c.primary, primary), (c.secondary, secondary), (c.copy, third)] {
         show_control(h, label.is_some());
         if let Some(l) = label {
             set_text(h, l);
         }
     }
-    show_control(c.update, update_info().is_some() && matches!(screen, Screen::Pick | Screen::Ready(_)));
-    show_control(c.copy, copy);
-    if copy {
-        set_text(c.copy, t(Key::CopyDetail));
-    }
+    let home = matches!(screen, Screen::Pick | Screen::Ready(_));
+    let updates = update_info().is_some() && home;
+    show_control(c.update, updates);
+    show_control(c.check, updates);
+    show_control(c.licences, home);
+    show_control(c.lang, home);
+    set_text(c.update, t(Key::UpdateCheckbox));
+    set_text(c.check, t(Key::CheckNow));
+    set_text(c.licences, t(Key::Licences));
+    set_text(c.lang, t(Key::LangButton));
     *g.screen.lock().unwrap() = screen.clone();
     // what was hidden or shown is painted now, not at the next occasion
     let h = g.hwnd.load(Ordering::SeqCst);
@@ -508,8 +572,8 @@ fn pick_rom(owner: Hwnd) -> Option<PathBuf> {
     let g = gui();
     let start = port::start_dir(&g.cache);
     let mut file = vec![0u16; 32768];
-    let filter: Vec<u16> = launcher::text(g.lang, Key::PickFilter).encode_utf16().collect();
-    let title = wide(launcher::text(g.lang, Key::PickTitle));
+    let filter: Vec<u16> = launcher::text(lang(), Key::PickFilter).encode_utf16().collect();
+    let title = wide(launcher::text(lang(), Key::PickTitle));
     let dir = wide(&start.to_string_lossy());
     let mut o = OpenFileNameW {
         size: std::mem::size_of::<OpenFileNameW>() as u32,
@@ -545,7 +609,7 @@ fn pick_rom(owner: Hwnd) -> Option<PathBuf> {
 
 /// Starts the build and the game for `rom` on a thread of its own.
 fn start(rom: PathBuf) {
-    draw(&Screen::Busy(launcher::text(gui().lang, Key::Working).to_string()));
+    draw(&Screen::Busy(launcher::text(lang(), Key::Working).to_string()));
     std::thread::spawn(move || {
         let ui = WindowUi::new();
         let code = port::run_port(rom, gui().cache.clone(), true, false, false, Vec::new(), Vec::new(), &ui);
@@ -560,16 +624,38 @@ fn finish(code: i32, ui: &WindowUi) {
         post(WM_APP_QUIT);
         return;
     }
-    let screen = if ui.launched.load(Ordering::SeqCst) { launcher::game_failed(gui().lang, code) } else { launcher::failed(gui().lang, code, &ui.errors.lock().unwrap().join("\n")) };
+    let screen = if ui.launched.load(Ordering::SeqCst) { launcher::game_failed(lang(), code) } else { launcher::failed(lang(), code, &ui.errors.lock().unwrap().join("\n")) };
     EXIT.store(code, Ordering::SeqCst);
     post_screen(screen);
     post(WM_APP_SHOW);
 }
 
 unsafe fn on_click(hwnd: Hwnd, id: i32) {
+    if id == ID_LANG {
+        let new = launcher::other_lang(lang());
+        gui().es.store(new == Lang::Es, Ordering::SeqCst);
+        launcher::save_lang(&gui().cache, new);
+        STATUS.lock().unwrap().clear();
+        SetWindowTextW(hwnd, wide(&app_title()).as_ptr());
+        let screen = gui().screen.lock().unwrap().clone();
+        draw(&screen);
+        return;
+    }
+    if id == ID_LICENCES {
+        let dir = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)).unwrap_or_default();
+        draw(&Screen::Licences(launcher::licence_text(lang(), &dir)));
+        return;
+    }
+    if id == ID_CHECK {
+        if let Some(info) = update_info() {
+            std::thread::spawn(move || update_flow(info, true));
+        }
+        return;
+    }
     if id == ID_UPDATE {
         if let (Some(c), Some(info)) = (CONTROLS.get(), update_info()) {
-            let on = SendMessageW(c.update, BM_GETCHECK, 0, 0) == 1;
+            let on = !UPDATE_ON.fetch_xor(true, Ordering::SeqCst);
+            InvalidateRect(c.update, std::ptr::null(), 1);
             update::set_check(&gui().cache, on);
             if on {
                 std::thread::spawn(move || update_flow(info, true));
@@ -595,15 +681,25 @@ unsafe fn on_click(hwnd: Hwnd, id: i32) {
             if let Some(tx) = gui().answer.lock().unwrap().take() {
                 let _ = tx.send(b == Button::Primary);
             }
-            draw(&Screen::Busy(launcher::text(gui().lang, Key::Working).to_string()));
+            draw(&Screen::Busy(launcher::text(lang(), Key::Working).to_string()));
         }
         (Screen::Failed { .. }, Button::Secondary) => {
             DestroyWindow(hwnd);
         }
+        (Screen::Update { .. }, Button::Primary) => {
+            if let Some(info) = update_info() {
+                std::thread::spawn(move || install_now(&info));
+            }
+        }
+        (Screen::Update { .. }, Button::Secondary) | (Screen::Licences(_), Button::Secondary) => draw(&launcher::first_screen(&gui().cache)),
+        (Screen::Update { tag, .. }, Button::Copy) => {
+            update::skip(&gui().cache, tag);
+            draw(&launcher::first_screen(&gui().cache));
+        }
         (Screen::Failed { detail, .. }, Button::Copy) => {
             if copy_to_clipboard(hwnd, detail) {
                 if let Some(c) = CONTROLS.get() {
-                    set_text(c.copy, launcher::text(gui().lang, Key::Copied));
+                    set_text(c.copy, launcher::text(lang(), Key::Copied));
                 }
             }
         }
@@ -612,10 +708,12 @@ unsafe fn on_click(hwnd: Hwnd, id: i32) {
 }
 
 /// What the header says for a screen: the title, the line under it and whether it is an error.
-fn header_texts(lang: Lang, screen: &Screen) -> (String, &'static str, bool) {
+fn header_texts(lang: Lang, screen: &Screen) -> (String, String, bool) {
     match screen {
-        Screen::Failed { title, .. } => (title.clone(), launcher::text(lang, Key::WindowTitle), true),
-        _ => (launcher::text(lang, Key::WindowTitle).to_string(), launcher::text(lang, Key::Tagline), false),
+        Screen::Failed { title, .. } => (title.clone(), app_title(), true),
+        Screen::Update { .. } => (launcher::text(lang, Key::UpdateTitle).to_string(), app_tagline(), false),
+        Screen::Licences(_) => (launcher::text(lang, Key::Licences).to_string(), app_tagline(), false),
+        _ => (app_title(), app_tagline(), false),
     }
 }
 
@@ -627,56 +725,186 @@ unsafe fn text_at(dc: isize, text: &str, font: isize, color: u32, rect: &mut Rec
     SelectObject(dc, old);
 }
 
-/// The header: the dark band with the icon, the title and the line under it, and the stripe of the accent colour below.
+/// A filled rectangle in layout pixels (scaled to the screen).
+unsafe fn fr(dc: isize, x: i32, y: i32, w: i32, h: i32, color: u32) {
+    let r = Rect { left: scale(x), top: scale(y), right: scale(x + w), bottom: scale(y + h) };
+    SetDCBrushColor(dc, rgb(color));
+    FillRect(dc, &r, GetStockObject(DC_BRUSH));
+}
+
+/// One piece of the Triforce: a triangle with a gold bevel, light from the top left; `w` wide at the base, `h` high.
+unsafe fn triangle(dc: isize, cx: i32, top: i32, w: i32, h: i32) {
+    for y in 0..h {
+        let half = y * (w / 2) / h + 1;
+        let shade = |x: i32| {
+            if y >= h - 3 || x >= half - 1 {
+                if y == h - 1 { OUTLINE } else { GOLD_LO }
+            } else if y == h - 1 || x == half {
+                GOLD_LO
+            } else if x == -half || y < 2 {
+                GOLD_HI
+            } else {
+                GOLD
+            }
+        };
+        // the row in three parts: the left edge, the body and the right edge
+        fr(dc, cx - half, top + y, 1, 1, shade(-half));
+        if half > 0 {
+            fr(dc, cx - half + 1, top + y, 2 * half - 1, 1, shade(0));
+        }
+        fr(dc, cx + half, top + y, 1, 1, shade(half));
+    }
+    fr(dc, cx - w / 2 - 1, top + h, w + 3, 1, OUTLINE);
+}
+
+/// The stone: a green gradient with a faint checkerboard, three gold filets and a diamond in each corner.
+unsafe fn backdrop(dc: isize) {
+    for y in (0..CLIENT_H).step_by(4) {
+        let base = mix(BG_TOP, BG_BOTTOM, y, CLIENT_H);
+        fr(dc, 0, y, CLIENT_W, 4, base);
+        let lit = mix(base, STONE_HI, 1, 10);
+        for cell in 0..=(CLIENT_W / 16) {
+            if (cell + y / 16) % 2 == 0 {
+                fr(dc, cell * 16, y, 16, 4, lit);
+            }
+        }
+    }
+    for (i, col) in [OUTLINE, GOLD, GOLD_LO].into_iter().enumerate() {
+        let m = 8 + i as i32 * 2;
+        fr(dc, m, m, CLIENT_W - 2 * m, 2, col);
+        fr(dc, m, CLIENT_H - m - 2, CLIENT_W - 2 * m, 2, col);
+        fr(dc, m, m, 2, CLIENT_H - 2 * m, col);
+        fr(dc, CLIENT_W - m - 2, m, 2, CLIENT_H - 2 * m, col);
+    }
+    for i in 0..4 {
+        let cx = if i & 1 != 0 { CLIENT_W - 20 } else { 20 };
+        let cy = if i & 2 != 0 { CLIENT_H - 20 } else { 20 };
+        for d in 0..7 {
+            fr(dc, cx - (6 - d), cy - d, 2 * (6 - d) + 1, 1, if d < 2 { GOLD_HI } else { GOLD });
+            fr(dc, cx - (6 - d), cy + d, 2 * (6 - d) + 1, 1, if d < 2 { GOLD } else { GOLD_LO });
+        }
+    }
+    triangle(dc, CLIENT_W / 2, 20, 26, 22);
+    triangle(dc, CLIENT_W / 2 - 14, 44, 26, 22);
+    triangle(dc, CLIENT_W / 2 + 14, 44, 26, 22);
+}
+
+/// Centred text with a dark shadow one pixel down and to the right.
+unsafe fn shadowed(dc: isize, text: &str, font: isize, color: u32, x: i32, y: i32, w: i32, h: i32) {
+    let mut r = Rect { left: scale(x + 1), top: scale(y + 1), right: scale(x + w + 1), bottom: scale(y + h + 1) };
+    text_at(dc, text, font, rgb(SHADOW), &mut r, DT_CENTER);
+    let mut r = Rect { left: scale(x), top: scale(y), right: scale(x + w), bottom: scale(y + h) };
+    text_at(dc, text, font, rgb(color), &mut r, DT_CENTER);
+}
+
+/// The whole window, painted off screen and copied in one go: the stone, the title, the line under it and the body.
 unsafe fn paint(hwnd: Hwnd) {
     let mut ps = std::mem::zeroed::<PaintStruct>();
-    let dc = BeginPaint(hwnd, &mut ps);
+    let screen_dc = BeginPaint(hwnd, &mut ps);
     if let Some(look) = LOOK.get() {
+        let (w, h) = (scale(CLIENT_W), scale(CLIENT_H));
+        let dc = CreateCompatibleDC(screen_dc);
+        let bmp = CreateCompatibleBitmap(screen_dc, w, h);
+        let old = SelectObject(dc, bmp);
+        backdrop(dc);
         let g = gui();
-        let (title, sub, error) = header_texts(g.lang, &g.screen.lock().unwrap());
-        let band = Rect { left: 0, top: 0, right: scale(CLIENT_W), bottom: scale(HEADER_H) };
-        let brush = CreateSolidBrush(if error { HEADER_ERROR } else { HEADER });
-        FillRect(dc, &band, brush);
-        DeleteObject(brush);
-        let stripe = Rect { left: 0, top: scale(HEADER_H), right: scale(CLIENT_W), bottom: scale(HEADER_H + STRIPE_H) };
-        let brush = CreateSolidBrush(if error { STRIPE_ERROR } else { STRIPE });
-        FillRect(dc, &stripe, brush);
-        DeleteObject(brush);
-        if look.icon != 0 {
-            DrawIconEx(dc, scale(24), scale(14), look.icon, scale(56), scale(56), 0, 0, DI_NORMAL);
-        }
+        let screen = g.screen.lock().unwrap().clone();
+        let (title, sub, error) = header_texts(lang(), &screen);
         SetBkMode(dc, 1);
-        let mut r = Rect { left: scale(96), top: scale(14), right: scale(CLIENT_W - 24), bottom: scale(46) };
-        text_at(dc, &title, look.title, HEADER_TITLE, &mut r, 0);
-        let mut r = Rect { left: scale(96), top: scale(46), right: scale(CLIENT_W - 24), bottom: scale(72) };
-        text_at(dc, sub, look.sub, HEADER_SUB, &mut r, 0);
+        shadowed(dc, &title, look.title, if error { ERROR_TITLE } else { GOLD_HI }, 24, 72, CLIENT_W - 48, 28);
+        shadowed(dc, &sub, look.sub, TEXT, 24, 100, CLIENT_W - 48, 20);
+        if !matches!(screen, Screen::Failed { .. } | Screen::Licences(_)) {
+            let body = BODY.lock().unwrap().clone();
+            let mut r = Rect { left: scale(32), top: scale(132), right: scale(CLIENT_W - 32), bottom: scale(250) };
+            let old_font = SelectObject(dc, look.body);
+            SetTextColor(dc, rgb(TEXT));
+            let text = wide(&body);
+            DrawTextW(dc, text.as_ptr(), -1, &mut r, DT_CENTER | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
+            SelectObject(dc, old_font);
+        }
+        if matches!(screen, Screen::Pick | Screen::Ready(_)) {
+            if let Some(info) = update_info() {
+                let status = STATUS.lock().unwrap().clone();
+                let line = if status.is_empty() { launcher::text(lang(), Key::VersionLabel).replace("{v}", &info.version) } else { status };
+                let mut r = Rect { left: scale(32), top: scale(228), right: scale(CLIENT_W - 32), bottom: scale(248) };
+                text_at(dc, &line, look.sub, rgb(DIM), &mut r, DT_CENTER);
+            }
+        }
+        BitBlt(screen_dc, 0, 0, w, h, dc, 0, 0, SRCCOPY);
+        SelectObject(dc, old);
+        DeleteObject(bmp);
+        DeleteDC(dc);
     }
     EndPaint(hwnd, &ps);
 }
 
-/// The main button: filled with the accent colour, a little darker while pressed, with a dotted rectangle when it has the focus.
+/// A rectangle of device pixels inside `rc`, in one colour.
+unsafe fn fill_in(dc: isize, rc: &Rect, x: i32, y: i32, w: i32, h: i32, color: u32) {
+    let r = Rect { left: rc.left + x, top: rc.top + y, right: rc.left + x + w, bottom: rc.top + y + h };
+    SetDCBrushColor(dc, rgb(color));
+    FillRect(dc, &r, GetStockObject(DC_BRUSH));
+}
+
+/// A plate: dark green stone inside a bevelled gold border (lighter and greener while pressed), the label on it. The main
+/// button has a brighter label; the one with the focus gets a light inner line.
+unsafe fn plate(dc: isize, rc: &Rect, label: &str, font: isize, main: bool, pressed: bool, focus: bool) {
+    let (w, h) = (rc.right - rc.left, rc.bottom - rc.top);
+    let t = scale(2).max(2);
+    let (hi, mid, lo) = if pressed { (GOLD, GOLD_LO, GOLD_LO) } else { (GOLD_HI, GOLD, GOLD_LO) };
+    fill_in(dc, rc, 0, 0, w, h, OUTLINE);
+    fill_in(dc, rc, 1, 1, w - 2, h - 2, mid);
+    fill_in(dc, rc, 1, 1, w - 2, t, hi);
+    fill_in(dc, rc, 1, 1, t, h - 2, hi);
+    fill_in(dc, rc, 1, h - 1 - t, w - 2, t, lo);
+    fill_in(dc, rc, w - 1 - t, 1, t, h - 2, lo);
+    let (x0, y0) = (1 + t, 1 + t);
+    let (iw, ih) = (w - 2 * (1 + t), h - 2 * (1 + t));
+    fill_in(dc, rc, x0, y0, iw, ih, if pressed { PRESS } else { STONE });
+    if !pressed {
+        fill_in(dc, rc, x0, y0, iw, 1, STONE_HI);
+    }
+    if focus {
+        let f = scale(3);
+        fill_in(dc, rc, x0 + f, y0 + f, iw - 2 * f, 1, GOLD_HI);
+        fill_in(dc, rc, x0 + f, y0 + ih - f - 1, iw - 2 * f, 1, GOLD_HI);
+        fill_in(dc, rc, x0 + f, y0 + f, 1, ih - 2 * f, GOLD_HI);
+        fill_in(dc, rc, x0 + iw - f - 1, y0 + f, 1, ih - 2 * f, GOLD_HI);
+    }
+    let mut r = Rect { left: rc.left, top: rc.top, right: rc.right, bottom: rc.bottom };
+    SetBkMode(dc, 1);
+    text_at(dc, label, font, rgb(if main { TEXT_HI } else { GOLD_HI }), &mut r, DT_CENTER | DT_VCENTER);
+}
+
+/// The buttons, drawn by hand: plates, and the check box of the update notice as a small plate with a tick.
 unsafe fn draw_button(di: &DrawItem) {
     let Some(look) = LOOK.get() else { return };
     let rc = Rect { left: di.rc.left, top: di.rc.top, right: di.rc.right, bottom: di.rc.bottom };
-    FillRect(di.dc, &rc, look.page);
-    let color = if di.state & ODS_SELECTED != 0 { ACCENT_PRESSED } else { ACCENT };
-    let (brush, pen) = (CreateSolidBrush(color), CreatePen(0, 1, color));
-    let (old_brush, old_pen) = (SelectObject(di.dc, brush), SelectObject(di.dc, pen));
-    RoundRect(di.dc, rc.left, rc.top, rc.right, rc.bottom, scale(8), scale(8));
-    SelectObject(di.dc, old_brush);
-    SelectObject(di.dc, old_pen);
-    DeleteObject(brush);
-    DeleteObject(pen);
     let mut label = [0u16; 128];
     let n = GetWindowTextW(di.item, label.as_mut_ptr(), label.len() as i32).max(0) as usize;
     let text = String::from_utf16_lossy(&label[..n]);
-    let mut r = Rect { left: rc.left, top: rc.top, right: rc.right, bottom: rc.bottom };
-    SetBkMode(di.dc, 1);
-    text_at(di.dc, &text, look.button, HEADER_TITLE, &mut r, DT_CENTER | DT_VCENTER);
-    if di.state & ODS_FOCUS != 0 {
-        let f = Rect { left: rc.left + scale(4), top: rc.top + scale(4), right: rc.right - scale(4), bottom: rc.bottom - scale(4) };
-        DrawFocusRect(di.dc, &f);
+    let pressed = di.state & ODS_SELECTED != 0;
+    let focus = di.state & ODS_FOCUS != 0;
+    if di.ctl_id == ID_UPDATE as u32 {
+        // the stone behind it (the gradient there, without the checkerboard, which is too faint to matter)
+        SetDCBrushColor(di.dc, rgb(mix(BG_TOP, BG_BOTTOM, 265, CLIENT_H)));
+        FillRect(di.dc, &rc, GetStockObject(DC_BRUSH));
+        let size = scale(14);
+        let top = (rc.bottom - rc.top - size) / 2;
+        let on = UPDATE_ON.load(Ordering::SeqCst);
+        fill_in(di.dc, &rc, 0, top, size, size, GOLD_LO);
+        fill_in(di.dc, &rc, 1, top + 1, size - 2, size - 2, if on { PRESS } else { STONE });
+        if on {
+            let u = (size / 14).max(1);
+            for (x, y, w, h) in [(4, 9, 2, 4), (6, 11, 2, 2), (8, 6, 2, 6), (10, 4, 2, 4)] {
+                fill_in(di.dc, &rc, x * u, top + y * u, w * u, h * u, TEXT_HI);
+            }
+        }
+        let mut r = Rect { left: rc.left + size + scale(8), top: rc.top, right: rc.right, bottom: rc.bottom };
+        SetBkMode(di.dc, 1);
+        text_at(di.dc, &text, look.body, rgb(if focus { GOLD_HI } else { TEXT }), &mut r, DT_VCENTER);
+        return;
     }
+    plate(di.dc, &rc, &text, look.button, di.ctl_id == ID_PRIMARY as u32, pressed, focus);
 }
 
 unsafe extern "system" fn wndproc(hwnd: Hwnd, msg: u32, wp: usize, lp: isize) -> isize {
@@ -689,12 +917,7 @@ unsafe extern "system" fn wndproc(hwnd: Hwnd, msg: u32, wp: usize, lp: isize) ->
             on_click(hwnd, (wp & 0xFFFF) as i32);
             0
         }
-        WM_ERASEBKGND => {
-            let mut r = std::mem::zeroed::<Rect>();
-            GetClientRect(hwnd, &mut r);
-            FillRect(wp as isize, &r, LOOK.get().map_or(0, |l| l.page));
-            1
-        }
+        WM_ERASEBKGND => 1, // `paint` covers everything, and an erase first would flicker
         WM_PAINT => {
             paint(hwnd);
             0
@@ -703,20 +926,11 @@ unsafe extern "system" fn wndproc(hwnd: Hwnd, msg: u32, wp: usize, lp: isize) ->
             draw_button(&*(lp as *const DrawItem));
             1
         }
-        WM_CTLCOLORBTN => {
-            // the text of the check box sits on the page
-            SetBkMode(wp as isize, 1);
-            LOOK.get().map_or(0, |l| l.page)
-        }
         WM_CTLCOLORSTATIC => {
-            SetBkMode(wp as isize, 1);
-            if CONTROLS.get().is_some_and(|c| c.detail == lp) {
-                // the box with the detail of an error stays white
-                return GetSysColorBrush(COLOR_WINDOW as i32);
-            }
-            // the texts sit on the page, not on the grey of the buttons
-            SetTextColor(wp as isize, INK);
-            LOOK.get().map_or(0, |l| l.page)
+            // the box with the detail of an error: light text on dark stone
+            SetBkColor(wp as isize, rgb(BG_TOP));
+            SetTextColor(wp as isize, rgb(TEXT));
+            LOOK.get().map_or(0, |l| l.dark)
         }
         WM_APP_SCREEN => {
             let screen = Box::from_raw(lp as *mut Screen);
@@ -766,12 +980,12 @@ fn window_thread(first: Screen, ready: mpsc::Sender<()>) {
             class_name: class.as_ptr(),
         };
         RegisterClassW(&wc);
-        let style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+        let style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN;
         let mut r = Rect { left: 0, top: 0, right: scale(CLIENT_W), bottom: scale(CLIENT_H) };
         AdjustWindowRect(&mut r, style, 0);
         let (w, h) = (r.right - r.left, r.bottom - r.top);
         let (x, y) = ((GetSystemMetrics(0) - w) / 2, (GetSystemMetrics(1) - h) / 3);
-        let title = wide(launcher::text(gui().lang, Key::WindowTitle));
+        let title = wide(&app_title());
         let hwnd = CreateWindowExW(0, class.as_ptr(), title.as_ptr(), style, x, y, w, h, 0, 0, inst, std::ptr::null_mut());
         if hwnd == 0 {
             let _ = ready.send(());
@@ -835,9 +1049,8 @@ impl WindowUi {
 
 impl Ui for WindowUi {
     fn status(&self, text: &str) {
-        let g = gui();
         // the line that announces the first build is the one worth saying (in the language of the window)
-        let shown = if text.starts_with("Building ") { launcher::text(g.lang, Key::FirstBuild).to_string() } else { text.to_string() };
+        let shown = if text.starts_with("Building ") { launcher::text(lang(), Key::FirstBuild).to_string() } else { text.to_string() };
         self.busy(shown);
     }
 
@@ -850,7 +1063,7 @@ impl Ui for WindowUi {
     }
 
     fn offer_download(&self, notice: &DownloadNotice) -> bool {
-        let text = match gui().lang {
+        let text = match lang() {
             Lang::En => format!(
                 "No C compiler was found on this machine. To build the game, {} ({} KiB) can be downloaded from {} and kept in {}.\n\nNothing about your ROM is sent; it is the only download.",
                 notice.name,
@@ -891,46 +1104,67 @@ fn message(text: &str, caption: &str, kind: u32) -> i32 {
     unsafe { MessageBoxW(h, wide(text).as_ptr(), wide(caption).as_ptr(), kind) }
 }
 
-/// The check and what follows, in a thread of its own because it waits for the network. `manual`: the person has just
-/// ticked the box, so every answer is told; otherwise only a new version is.
+/// The screen that offers a new version.
+fn update_screen(info: &update::Info, tag: &str) -> Screen {
+    let text = launcher::text(lang(), Key::UpdateAsk).replace("{tag}", tag).replace("{current}", &info.version);
+    Screen::Update { tag: tag.to_string(), text }
+}
+
+/// The check and what follows, in a thread of its own because it waits for the network. `manual`: the person asked for it
+/// (the box just ticked, or the button), so every answer is told, a skipped version is offered again and the answer shows
+/// under the body; otherwise only a new version is told, and only while the window is waiting for a choice.
 fn update_flow(info: update::Info, manual: bool) {
     let g = gui();
-    let t = |k: Key| launcher::text(g.lang, k);
+    let t = |k: Key| launcher::text(lang(), k);
     for _ in 0..40 {
         if g.hwnd.load(Ordering::SeqCst) != 0 {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
+    if manual {
+        set_status(t(Key::Checking));
+    }
+    let waiting = || matches!(&*g.screen.lock().unwrap(), Screen::Pick | Screen::Ready(_));
     match update::check(&g.cache, &info, manual) {
-        update::Outcome::Available { tag, .. } => {
-            let ask = t(Key::UpdateAsk).replace("{tag}", &tag).replace("{current}", &info.version);
-            match message(&ask, t(Key::UpdateTitle), MB_YESNOCANCEL | MB_ICONQUESTION) {
-                IDYES => install_now(&info),
-                IDCANCEL => update::skip(&g.cache, &tag),
-                _ => {}
-            }
+        update::Outcome::Available { tag, .. } if waiting() => {
+            set_status("");
+            post_screen(update_screen(&info, &tag));
         }
-        update::Outcome::UpToDate if manual => {
-            message(t(Key::UpdateUpToDate), t(Key::UpdateTitle), MB_OK | MB_ICONINFORMATION);
+        update::Outcome::Skipped if manual && waiting() => {
+            set_status("");
+            let tag = update::load_settings(&g.cache).tag;
+            post_screen(update_screen(&info, &tag));
         }
-        update::Outcome::Failed(_) if manual => {
-            message(t(Key::UpdateUnreachable), t(Key::UpdateTitle), MB_OK | MB_ICONERROR);
-        }
+        update::Outcome::UpToDate if manual => set_status(t(Key::UpdateUpToDate)),
+        update::Outcome::Failed(_) if manual => set_status(t(Key::UpdateUnreachable)),
+        _ if manual => set_status(""),
         _ => {}
     }
 }
 
 fn install_now(info: &update::Info) {
     let g = gui();
-    let t = |k: Key| launcher::text(g.lang, k);
+    let t = |k: Key| launcher::text(lang(), k);
     post_screen(Screen::Busy(t(Key::Updating).to_string()));
     let Some(exe) = std::env::current_exe().ok() else { return };
     let dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
     match update::install(info, &dir, &g.cache.join("update-work")) {
         Ok(_) => {
             message(t(Key::UpdateDone), t(Key::UpdateTitle), MB_OK | MB_ICONINFORMATION);
-            let _ = std::process::Command::new(&exe).spawn(); // the new executable
+            // an installation from before the package carried the name of the game still runs `snes-port.exe`: the update
+            // brings `alttp-recomp.exe`, which is what starts now, and the old one is set aside (it is deleted at the next start)
+            let renamed = std::fs::read_dir(&dir).ok().and_then(|rd| {
+                rd.flatten().map(|e| e.path()).find(|p| p.extension().is_some_and(|x| x == "exe") && p != &exe && p.file_stem().is_some_and(|s| s != "snes-port" && s != "snes-recomp"))
+            });
+            let next = match renamed {
+                Some(new) if exe.file_stem().is_some_and(|s| s == "snes-port") => {
+                    let _ = std::fs::rename(&exe, exe.with_extension("exe.old"));
+                    new
+                }
+                _ => exe.clone(),
+            };
+            let _ = std::process::Command::new(&next).spawn(); // the new executable
             EXIT.store(0, Ordering::SeqCst);
             post(WM_APP_QUIT);
         }
@@ -945,7 +1179,7 @@ fn install_now(info: &update::Info) {
 
 fn init(cache: &Path, picks_rom: bool) {
     let _ = GUI.set(Gui {
-        lang: ui_language(),
+        es: AtomicBool::new(launcher::load_lang(cache).unwrap_or_else(ui_language) == Lang::Es),
         cache: cache.to_path_buf(),
         picks_rom,
         hwnd: AtomicIsize::new(0),
@@ -989,7 +1223,7 @@ pub fn run_rom(rom: PathBuf, cache: &Path, launch: bool, fast: bool, download_ye
         return 0;
     }
     // a failure always gets its window, and the program waits for it to be read
-    let screen = if ui.launched.load(Ordering::SeqCst) { launcher::game_failed(gui().lang, code) } else { launcher::failed(gui().lang, code, &ui.errors.lock().unwrap().join("\n")) };
+    let screen = if ui.launched.load(Ordering::SeqCst) { launcher::game_failed(lang(), code) } else { launcher::failed(lang(), code, &ui.errors.lock().unwrap().join("\n")) };
     EXIT.store(code, Ordering::SeqCst);
     open_window(screen.clone());
     post_screen(screen);
