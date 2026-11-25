@@ -382,11 +382,11 @@ static void slot_choose(int s) {
 
 /* The grid: three columns of three, in the 256 by 224 of the game picture. */
 #define SL_X0 16
-#define SL_Y0 38
+#define SL_Y0 36
 #define SL_CW 72
 #define SL_CH 54
 #define SL_GX 4
-#define SL_GY 3
+#define SL_GY 2
 
 static int slot_cell_at(int x, int y) {
     int i;
@@ -395,6 +395,34 @@ static int slot_cell_at(int x, int y) {
         if (x >= cx && x < cx + SL_CW && y >= cy && y < cy + SL_CH) return i + 1;
     }
     return 0;
+}
+
+/* The two buttons under the grid: 1 saves the chosen slot, 2 loads it. */
+#define SL_BY 204
+#define SL_BH 11
+#define SL_BW 100
+static int slot_btn_x(int b) { return b == 1 ? 20 : 136; }
+static int slot_btn_at(int x, int y) {
+    int b;
+    for (b = 1; b <= 2; b++)
+        if (x >= slot_btn_x(b) && x < slot_btn_x(b) + SL_BW && y >= SL_BY && y < SL_BY + SL_BH) return b;
+    return 0;
+}
+
+/* Saves (kind 1) or loads (kind 2) the slot `s`. The picker closes first: the game only deals with the request once it runs again. */
+static void slot_act(int s, int kind) {
+    st_slot = s;
+    slot_open = 0;
+    st_request(kind);
+}
+
+/* A click or tap at (x, y) of the picture while the picker is open: a button acts on the chosen slot, a cell chooses it
+ * (a second one on the chosen cell closes the picker), and outside the panel closes it. */
+static void slot_click(int x, int y) {
+    int b = slot_btn_at(x, y), c = slot_cell_at(x, y);
+    if (b) slot_act(slot_cur, b);
+    else if (c && c == slot_cur) slot_choose(c);
+    else if (c) slot_cur = c;
 }
 
 static void slot_draw(const uint8_t *fb) {
@@ -426,6 +454,15 @@ static void slot_draw(const uint8_t *fb) {
             if (lt && strftime(when, sizeof when, "%d-%m %H:%M", lt)) text_center(&cv, cx, SL_CW, cy + 44, when, on ? UI_TEXT : UI_DIM);
         }
     }
+    {
+        int b;
+        for (b = 1; b <= 2; b++) {
+            const char *l = tr(b == 1 ? "SAVE" : "LOAD");
+            cv_rect(&cv, slot_btn_x(b), SL_BY, SL_BW, SL_BH, 0x3A4A98u);
+            cv_rect(&cv, slot_btn_x(b) + 1, SL_BY + 1, SL_BW - 2, SL_BH - 2, 0x1C2C78u);
+            text_center(&cv, slot_btn_x(b), SL_BW, SL_BY + 2, l, UI_TEXT);
+        }
+    }
 }
 
 static void slot_key(SDL_Scancode sc) {
@@ -436,6 +473,8 @@ static void slot_key(SDL_Scancode sc) {
     case SDL_SCANCODE_UP: c = (c + 6) % 9; break;
     case SDL_SCANCODE_DOWN: c = (c + 3) % 9; break;
     case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: case SDL_SCANCODE_SPACE: slot_choose(slot_cur); return;
+    case SDL_SCANCODE_S: case SDL_SCANCODE_F5: slot_act(slot_cur, 1); return;
+    case SDL_SCANCODE_L: case SDL_SCANCODE_F7: slot_act(slot_cur, 2); return;
     case SDL_SCANCODE_ESCAPE: case SDL_SCANCODE_F6: slot_close(); return;
     default: return;
     }
@@ -450,6 +489,8 @@ static void slot_pad(SDL_GameControllerButton b) {
     case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: slot_key(SDL_SCANCODE_RIGHT); break;
     case SDL_CONTROLLER_BUTTON_A: slot_key(SDL_SCANCODE_RETURN); break;
     case SDL_CONTROLLER_BUTTON_B: slot_key(SDL_SCANCODE_ESCAPE); break;
+    case SDL_CONTROLLER_BUTTON_X: slot_key(SDL_SCANCODE_S); break;
+    case SDL_CONTROLLER_BUTTON_Y: slot_key(SDL_SCANCODE_L); break;
     default: break;
     }
 }
@@ -457,7 +498,7 @@ static void slot_pad(SDL_GameControllerButton b) {
 /* A finger down at (px, py) of a window w by h while the picker is open: on a slot it chooses it, outside the picture it closes the picker.
  * 0 when the finger is on one of the touch controls (the caller goes on with it), 1 when it was dealt with here. */
 static int slot_tap(int px, int py, int w, int h) {
-    int lines = view_lines(), e = (show_w - SCREEN_W) / 2, cx, cy, s;
+    int lines = view_lines(), e = (show_w - SCREEN_W) / 2, cx, cy;
     Rect r;
     if (touch_hit(&tcfg, touch_layout(&tcfg, w, h), w, h, px, py) >= 0) return 0;
     r = view_rect(w, h, cfg.eff.v[O_ASPECT], cfg.eff.v[O_SCALING], lines, show_w);
@@ -465,8 +506,7 @@ static int slot_tap(int px, int py, int w, int h) {
     if (px < r.x || py < r.y || px >= r.x + r.w || py >= r.y + r.h) { slot_close(); return 1; }
     cx = (int)((long)(px - r.x) * show_w / r.w) - e;
     cy = (int)((long)(py - r.y) * lines / r.h) + cfg.eff.v[O_OVERSCAN];
-    s = slot_cell_at(cx, cy);
-    if (s) slot_choose(s);
+    slot_click(cx, cy);
     return 1;
 }
 

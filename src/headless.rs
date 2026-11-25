@@ -3752,6 +3752,7 @@ int main(void) {
             {"title", 120, {"OPTIONS"}},
             {"title of the slot picker (drawn twice as large)", 110, {"SAVE STATES"}},
             {"empty cell of the slot picker (a picture is 48 wide)", 44, {"EMPTY"}},
+            {"button of the slot picker", 96, {"SAVE", "LOAD"}},
             {"button of the Controls tab", 66, {"Up", "Down", "Left", "Right"}},
             {"column header of the Controls tab", 64, {"Keyboard", "Controller", "No controller"}},
             {"toast", 240, {"State saved (slot %d)", "State loaded (slot %d)", "Slot %d", "Slot %d is empty", "Cannot save", "Cannot load", "Cannot read the state", "Cannot write the state", "Save states are not available in this game", "wait a moment and try again", "not possible during the intro or title screen", "not a state of this version", "state of another game", "state taken at another stack depth", "out of memory"}},

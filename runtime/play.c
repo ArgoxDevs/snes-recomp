@@ -2325,10 +2325,8 @@ static void mouse_click(int mx, int my) {
     py = (int)((long)my * h / wh);
     layer_pt(px, py, w, h, &cx, &cy);
     if (slot_open) {
-        int sl;
         if (cx < 0) { slot_close(); return; }
-        sl = slot_cell_at(cx, cy);
-        if (sl) slot_choose(sl);
+        slot_click(cx, cy);
     } else if (menu_open) {
         mouse_mode = 1;
         menu_tap_canvas(cx, cy);
@@ -2785,7 +2783,10 @@ static int open_window(void) {
         fprintf(stderr, "error: SDL_Init: %s\n", SDL_GetError());
         return 0;
     }
-    for (i = 0; i < 21; i++) title[i] = rom_size > 0x7FD5 && rom[0x7FC0 + i] >= 32 && rom[0x7FC0 + i] < 127 ? (char)rom[0x7FC0 + i] : ' ';
+    {
+        size_t hdr = rom_header_off();
+        for (i = 0; i < 21; i++) title[i] = rom_size > hdr + 0x15 && rom[hdr + i] >= 32 && rom[hdr + i] < 127 ? (char)rom[hdr + i] : ' ';
+    }
     title[21] = 0;
     ww = (int)((SCREEN_W + 2 * cfg.eff.v[O_WIDE]) * scale * (cfg.eff.v[O_ASPECT] == ASPECT_43 ? 7.0 / 6.0 : 1.0) + 0.5);
     wh = SCREEN_H * scale;
