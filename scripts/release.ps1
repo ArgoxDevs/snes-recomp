@@ -25,8 +25,8 @@ if ($LASTEXITCODE -ne 0) { throw "no se pudo leer el estado de git" }
 if ($dirty) { $dirty | ForEach-Object { Write-Host "  $_" }; throw "hay cambios sin commit: haz commit (o stash) antes de armar el paquete" }
 $commit = (git rev-parse --short=7 HEAD).Trim()
 $commitFull = (git rev-parse HEAD).Trim()
-$tag = (git describe --tags --exact-match HEAD 2>$null)
-if ($LASTEXITCODE -ne 0 -or -not $tag) { $tag = "" } else { $tag = $tag.Trim() }
+$tag = ((git tag --points-at HEAD) | Select-Object -First 1)
+if (-not $tag) { $tag = "" } else { $tag = $tag.Trim() }
 
 if (-not $NoBuild) {
     $env:SNES_ENGINE_COMMIT = $commit
