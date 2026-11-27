@@ -19,7 +19,12 @@ pub fn sdl2_dir() -> Option<std::path::PathBuf> {
         let p = std::path::PathBuf::from(d);
         return p.join("include").join("SDL.h").exists().then_some(p);
     }
+    // Atajo de desarrollo: `out/sdl2` del repositorio. Solo en compilaciones de depuración y de pruebas; el binario que se reparte
+    // no lleva la ruta de la máquina que lo construyó.
+    #[cfg(any(debug_assertions, test))]
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("out").join("sdl2");
+    #[cfg(not(any(debug_assertions, test)))]
+    let root = std::path::PathBuf::from("sdl2");
     std::fs::read_dir(root).ok()?.flatten().map(|e| e.path()).find(|p| p.join("include").join("SDL.h").exists())
 }
 

@@ -228,9 +228,13 @@ pub fn find_sdl2() -> Option<PathBuf> {
             return Some(p);
         }
     }
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("out").join("sdl2");
-    if let Some(p) = std::fs::read_dir(root).ok().and_then(|r| r.flatten().map(|e| e.path()).find(|p| ok(p))) {
-        return Some(p);
+    // `out/sdl2` del repositorio: solo en compilaciones de desarrollo (el binario que se reparte no lleva la ruta de quien lo construyó).
+    #[cfg(any(debug_assertions, test))]
+    {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("out").join("sdl2");
+        if let Some(p) = std::fs::read_dir(root).ok().and_then(|r| r.flatten().map(|e| e.path()).find(|p| ok(p))) {
+            return Some(p);
+        }
     }
     // Linux/macOS: gcc/clang usan el SDL2 del sistema (sdl2-config); la ruta solo indica que existe
     if !cfg!(windows) && Command::new("sdl2-config").arg("--version").output().is_ok_and(|o| o.status.success()) {

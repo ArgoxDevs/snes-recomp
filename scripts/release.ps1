@@ -19,6 +19,11 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
 if (-not $NoBuild) {
+    # El binario que se reparte no debe llevar rutas de esta máquina (las de los panics de las dependencias en ~\.cargo, las del
+    # repositorio y las de la cadena de Rust): se reescriben con --remap-path-prefix. (`trim-paths` de Cargo aún es inestable.)
+    $cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE ".cargo" }
+    $sysroot = (& rustc --print sysroot).Trim()
+    $env:RUSTFLAGS = "$env:RUSTFLAGS --remap-path-prefix=$cargoHome=/cargo --remap-path-prefix=$sysroot=/rustc --remap-path-prefix=$root=/snes-recomp"
     cargo build --release
     if ($LASTEXITCODE -ne 0) { throw "cargo build fallo" }
 }
