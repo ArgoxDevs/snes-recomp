@@ -272,6 +272,12 @@ pub fn install(info: &Info, install_dir: &Path, work: &Path) -> Result<String, S
 
 /// C interface (`update` of `linux/launcher.c`): all strings are UTF-8, results are freed with `snes_upd_free`.
 pub mod ffi {
+    /// The commit the engine is built from (`crate::ENGINE_COMMIT`), for the launcher of Linux. Static: not freed.
+    #[no_mangle]
+    pub extern "C" fn snes_engine_commit() -> *const std::os::raw::c_char {
+        concat!(env!("SNES_ENGINE_COMMIT"), "\0").as_ptr().cast()
+    }
+
     use super::*;
 
     pub struct SnesUpd {

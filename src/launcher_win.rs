@@ -825,7 +825,7 @@ unsafe fn paint(hwnd: Hwnd) {
         if matches!(screen, Screen::Pick | Screen::Ready(_)) {
             if let Some(info) = update_info() {
                 let status = STATUS.lock().unwrap().clone();
-                let line = if status.is_empty() { launcher::text(lang(), Key::VersionLabel).replace("{v}", &info.version) } else { status };
+                let line = if status.is_empty() { launcher::text(lang(), Key::VersionLabel).replace("{v}", &info.version).replace("{e}", crate::ENGINE_COMMIT) } else { status };
                 let mut r = Rect { left: scale(32), top: scale(228), right: scale(CLIENT_W - 32), bottom: scale(248) };
                 text_at(dc, &line, look.sub, rgb(DIM), &mut r, DT_CENTER);
             }

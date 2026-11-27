@@ -33,6 +33,7 @@ pub const USAGE: &str = "\
 usage:
   snes-port <rom> [--cache <dir>] [--no-launch] [--fast] [--download-compiler] [--game <profile.toml>]... [-- <game options>]
   snes-port clean [<rom>] [--cache <dir>]
+  snes-port --version
 
 Builds the game from your own ROM, on this machine, the first time (a few minutes) and starts it; the next times
 it starts at once. Nothing derived from the ROM leaves this machine: the generated C and the executable live in the
@@ -790,6 +791,10 @@ pub fn main(args: &[String]) -> i32 {
             "clean" if rom.is_none() && !clean_cmd => clean_cmd = true,
             "-h" | "--help" => {
                 println!("{USAGE}");
+                return 0;
+            }
+            "-V" | "--version" => {
+                println!("snes-port {}", crate::ENGINE_VERSION);
                 return 0;
             }
             s if !s.starts_with("--") && rom.is_none() => rom = Some(PathBuf::from(s)),

@@ -18,7 +18,18 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+# Un paquete se hace solo desde un commit (sin cambios en los ficheros con seguimiento), para que se pueda saber qué código
+# lleva: su commit va en el nombre del zip, en ENGINE_VERSION y en el propio programa (--version, la línea del lanzador).
+$dirty = git status --porcelain --untracked-files=no
+if ($LASTEXITCODE -ne 0) { throw "no se pudo leer el estado de git" }
+if ($dirty) { $dirty | ForEach-Object { Write-Host "  $_" }; throw "hay cambios sin commit: haz commit (o stash) antes de armar el paquete" }
+$commit = (git rev-parse --short=7 HEAD).Trim()
+$commitFull = (git rev-parse HEAD).Trim()
+$tag = (git describe --tags --exact-match HEAD 2>$null)
+if ($LASTEXITCODE -ne 0 -or -not $tag) { $tag = "" } else { $tag = $tag.Trim() }
+
 if (-not $NoBuild) {
+    $env:SNES_ENGINE_COMMIT = $commit
     # El binario que se reparte no debe llevar rutas de esta máquina (las de los panics de las dependencias en ~\.cargo, las del
     # repositorio y las de la cadena de Rust): se reescriben con --remap-path-prefix. (`trim-paths` de Cargo aún es inestable.)
     $cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE ".cargo" }
@@ -28,13 +39,22 @@ if (-not $NoBuild) {
     if ($LASTEXITCODE -ne 0) { throw "cargo build fallo" }
 }
 $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
-$name = "snes-port-$version-win64"
+$name = if ($tag) { "snes-port-$tag-win64" } else { "snes-port-$version-$commit-win64" }
 $stage = Join-Path $root "out\release\$name"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force $stage | Out-Null
 
 Copy-Item target\release\snes-port.exe, target\release\snes-recomp.exe $stage
 Copy-Item README.md, LICENSE $stage
+# qué motor es (lo copia update-engine.ps1 de cada juego junto a su ejecutable)
+@"
+version=$version
+tag=$tag
+commit=$commitFull
+"@ | Set-Content -Encoding ascii (Join-Path $stage "ENGINE_VERSION")
+$said = (& target\release\snes-recomp.exe --version | Out-String).Trim()
+elease\snes-port.exe --version | Out-String).Trim()
+if ($said -notlike "*($commit)*") { throw "el snes-recomp.exe compilado dice '$said', no el commit $commit (¿-NoBuild con un binario viejo?)" }
 
 if ($Sdl2 -eq "") {
     $found = Get-ChildItem out\sdl2 -Directory -ErrorAction SilentlyContinue | Where-Object { Test-Path "$($_.FullName)\include\SDL.h" } | Select-Object -First 1

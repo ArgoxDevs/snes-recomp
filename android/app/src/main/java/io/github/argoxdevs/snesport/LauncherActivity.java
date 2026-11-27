@@ -63,7 +63,7 @@ public class LauncherActivity extends Activity {
         col.addView(subtitle);
         col.addView(message);
         if (haveRom) {
-            message.setText(getString(R.string.version, UpdateChecker.installedVersion(this)));
+            message.setText(getString(R.string.version, UpdateChecker.installedVersion(this), getString(R.string.engine_commit)));
             Button play = ZeldaUi.button(this, getString(R.string.play), true);
             play.setOnClickListener(v -> startGame());
             col.addView(play);

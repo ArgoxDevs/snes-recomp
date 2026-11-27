@@ -14,6 +14,7 @@ usage:
   snes-recomp codegen <rom> <addr> [--depth N] [-o <file.c>] [--game <profile.toml> | --config <file>]
   snes-recomp codegen <rom> --all -o <dir> [--game <profile.toml> | --config <file>]
   snes-recomp scan <rom> <dir>
+  snes-recomp --version
 
 <addr> is hex, as BB:AAAA or BBAAAA.
 discover uses the profile of the ROM, found in games/ (here or next to the program) or given with --game; --config
@@ -276,6 +277,10 @@ fn started_as_port() -> bool {
 
 fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().collect();
+    if !started_as_port() && args.get(1).is_some_and(|a| a == "--version" || a == "-V") {
+        println!("snes-recomp {}", snes_recomp::ENGINE_VERSION);
+        return ExitCode::SUCCESS;
+    }
     // `alttp-recomp recomp scan ...`: the generator's command line from the executable of a game, which has no second one
     if started_as_port() && args.get(1).is_some_and(|a| a == "recomp") {
         args.remove(1);

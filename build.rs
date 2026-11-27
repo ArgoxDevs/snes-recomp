@@ -4,6 +4,7 @@
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    engine_commit();
     println!("cargo:rerun-if-changed=assets/snes-port.manifest");
     println!("cargo:rerun-if-changed=assets/snes-port.ico");
     let target_windows_msvc = std::env::var("CARGO_CFG_TARGET_OS").is_ok_and(|v| v == "windows") && std::env::var("CARGO_CFG_TARGET_ENV").is_ok_and(|v| v == "msvc");
@@ -19,6 +20,37 @@ fn main() {
     println!("cargo:rustc-link-arg-bin=snes-port=/ENTRY:mainCRTStartup");
     println!("cargo:rustc-link-arg-bin=snes-port=/MANIFEST:EMBED");
     println!("cargo:rustc-link-arg-bin=snes-port=/MANIFESTINPUT:{}", manifest.display());
+}
+
+/// `SNES_ENGINE_COMMIT` for the program (`--version`, the line under the launcher): the short commit it is built from, with
+/// `-dirty` when tracked files have changes, or `unknown` outside git. A package build can give it in the environment.
+fn engine_commit() {
+    println!("cargo:rerun-if-env-changed=SNES_ENGINE_COMMIT");
+    let git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    };
+    let commit = match std::env::var("SNES_ENGINE_COMMIT") {
+        Ok(c) if !c.is_empty() => c,
+        _ => match git(&["rev-parse", "--short=7", "HEAD"]) {
+            Some(c) => {
+                // a commit, a checkout or a change to the index moves one of these (in a worktree too)
+                for p in ["HEAD", "logs/HEAD", "index"] {
+                    if let Some(f) = git(&["rev-parse", "--git-path", p]) {
+                        println!("cargo:rerun-if-changed={f}");
+                    }
+                }
+                let dirty = git(&["status", "--porcelain", "--untracked-files=no"]).is_some_and(|s| !s.is_empty());
+                if dirty { format!("{c}-dirty") } else { c }
+            }
+            None => "unknown".to_string(),
+        },
+    };
+    println!("cargo:rustc-env=SNES_ENGINE_COMMIT={commit}");
 }
 
 /// One entry of a `.res` file: type and name are numeric ids, the data is padded to 4 bytes.

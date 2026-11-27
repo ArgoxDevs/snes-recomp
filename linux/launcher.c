@@ -37,6 +37,7 @@ int snes_play_main(int argc, char **argv);
 /* avisos y actualización (src/update.rs): se llaman desde un hilo, porque esperan a la red */
 typedef struct SnesUpd SnesUpd;
 SnesUpd *snes_upd_version(const char *exe_dir);
+const char *snes_engine_commit(void); /* el commit del motor (static, no se libera) */
 int snes_upd_enabled(const char *dir);
 void snes_upd_set_enabled(const char *dir, int on);
 void snes_upd_skip(const char *dir, const char *tag);
@@ -331,7 +332,7 @@ static void draw(const char *msg, uint32_t msg_color, const char *main_label, co
             cv_rect(&cv, chk_rect.x + 10, chk_rect.y + 4, 2, 4, TC_TEXT);
         }
         text_draw(&cv, chk_rect.x + 22, chk_rect.y + 5, TR(S_CHECK_UPDATES), inside(chk_rect, mx, my) ? UI_GOLD : 0xC8D8B8, 0);
-        snprintf(v, sizeof v, "v%s", upd_version);
+        snprintf(v, sizeof v, "v%s  %s %s", upd_version, lang ? "motor" : "engine", snes_engine_commit());
         text_right(&cv, WIN_W - 28, chk_rect.y + 5, v, UI_DIM);
         if (upd_status[0]) text_center(&cv, 0, WIN_W, 232, upd_status, UI_GOLD);
         button(btn_check, TR(S_CHECK_NOW), 0, inside(btn_check, mx, my));

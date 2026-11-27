@@ -6,7 +6,7 @@
     <string name="pick_rom">Choose ROM</string>
     <string name="change_rom">Change ROM</string>
     <string name="licences">Licences</string>
-    <string name="version">Version %1$s</string>
+    <string name="version">Version %1$s · engine %2$s</string>
     <string name="play">Play</string>
     <string name="auto_check">Check for updates on start (uses the Internet)</string>
     <string name="check_now">Check for updates now</string>

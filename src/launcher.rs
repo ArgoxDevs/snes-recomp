@@ -106,7 +106,7 @@ pub fn text(lang: Lang, key: Key) -> &'static str {
             CheckNow => "Check now",
             Checking => "Checking...",
             Licences => "Licences",
-            VersionLabel => "Version {v}",
+            VersionLabel => "Version {v} · engine {e}",
             LangButton => "EN",
         },
         Lang::Es => match key {
@@ -146,7 +146,7 @@ pub fn text(lang: Lang, key: Key) -> &'static str {
             CheckNow => "Buscar ahora",
             Checking => "Buscando...",
             Licences => "Licencias",
-            VersionLabel => "Versión {v}",
+            VersionLabel => "Versión {v} · motor {e}",
             LangButton => "ES",
         },
     }

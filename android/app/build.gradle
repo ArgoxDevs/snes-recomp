@@ -10,6 +10,20 @@ def profile = rootProject.file(providers.gradleProperty('snesPort.gameProfile').
 def gameAssets = layout.buildDirectory.dir('generated/gameAssets')
 // Nombre e icono propios del juego: games/<juego>/android/res (si existe) tapa los del motor (variantes antes que main).
 def gameRes = new File(profile.parentFile, (profile.name - '.toml') + '/android/res')
+// El commit del motor (como build.rs en el escritorio): se enseña bajo el título junto a la versión.
+def engineCommit = providers.gradleProperty('snesPort.engineCommit').orElse(providers.provider {
+    try {
+        def out = new ByteArrayOutputStream()
+        def r = exec { commandLine 'git', '-C', repo, 'rev-parse', '--short=7', 'HEAD'; standardOutput = out; ignoreExitValue = true }
+        if (r.exitValue != 0) return 'unknown'
+        def c = out.toString().trim()
+        def st = new ByteArrayOutputStream()
+        exec { commandLine 'git', '-C', repo, 'status', '--porcelain', '--untracked-files=no'; standardOutput = st; ignoreExitValue = true }
+        return st.toString().trim().isEmpty() ? c : c + '-dirty'
+    } catch (Exception e) {
+        return 'unknown'
+    }
+}).get()
 
 android {
     namespace 'io.github.argoxdevs.snesport'
@@ -25,6 +39,7 @@ android {
         versionCode 13
         // Dirección de la última release (API de GitHub) para el aviso de versión nueva; vacía: la app no tiene nada de eso.
         resValue 'string', 'app_id', providers.gradleProperty('snesPort.applicationId').get() // el atajo de los ajustes lo necesita (los recursos no admiten ${applicationId})
+        resValue 'string', 'engine_commit', engineCommit
         resValue 'string', 'update_url', providers.gradleProperty('snesPort.updateUrl').getOrElse('')
         versionName '0.13'
         ndk { abiFilters 'arm64-v8a' }
