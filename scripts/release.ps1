@@ -53,7 +53,6 @@ tag=$tag
 commit=$commitFull
 "@ | Set-Content -Encoding ascii (Join-Path $stage "ENGINE_VERSION")
 $said = (& target\release\snes-recomp.exe --version | Out-String).Trim()
-elease\snes-port.exe --version | Out-String).Trim()
 if ($said -notlike "*($commit)*") { throw "el snes-recomp.exe compilado dice '$said', no el commit $commit (¿-NoBuild con un binario viejo?)" }
 
 if ($Sdl2 -eq "") {
