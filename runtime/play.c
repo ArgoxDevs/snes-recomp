@@ -1757,6 +1757,9 @@ static int mm_main_target(int i) {
     return t[i];
 }
 
+/* The rows of the controller page leave the right side to the picture of the pad, as the Controls tab of the desktop does. */
+static int mm_roww(int page) { return page == MM_PAD ? CTL_RX - ROW_X - 2 : ROW_W; }
+
 static int mm_count(int page) {
     switch (page) {
     case MM_MAIN:
@@ -1785,7 +1788,8 @@ static void mm_row(int page, int i, MRow *r) {
         else { r->label = mm_titles[mm_main_target(i)]; r->kind = MK_SUB; }
         break;
     case MM_PAD:
-        if (i == 0) { r->label = "Player"; r->kind = MK_VALUE; snprintf(r->val, sizeof r->val, tr("Player %d"), menu_player + 1); r->dimL = menu_player == 0 || rt_players < 2; r->dimR = menu_player == 1 || rt_players < 2; }
+        if (i == 0 && rt_players < 2) { r->label = "Player"; r->kind = MK_TEXT; snprintf(r->val, sizeof r->val, "1"); }
+        else if (i == 0) { r->label = "Player"; r->kind = MK_VALUE; snprintf(r->val, sizeof r->val, tr("Player %d"), menu_player + 1); r->dimL = menu_player == 0 || rt_players < 2; r->dimR = menu_player == 1 || rt_players < 2; }
         else {
             r->label = btn_labels[i - 1]; r->kind = MK_TEXT;
             bind_cell(r->val, sizeof r->val, BIND_PAD, menu_player, 0x8000 >> (i - 1));
@@ -1941,8 +1945,8 @@ static void mm_draw(const uint8_t *fb) {
         MRow r;
         int on = i == s, y = MM_ROW_Y + (i - first) * MM_ROW_H, ty = y + 6;
         mm_row(mm_page, i, &r);
-        cv_rect(&cv, ROW_X, y, ROW_W, MM_ROW_H - 2, on ? 0x34489Cu : 0x1A2670u);
-        text_fit(fit, sizeof fit, tr(r.label), r.kind == MK_ACTION || r.kind == MK_SUB ? ROW_W - 30 : r.kind == MK_TEXT ? 100 : MM_VAL_X - ROW_X - 14);
+        cv_rect(&cv, ROW_X, y, mm_roww(mm_page), MM_ROW_H - 2, on ? 0x34489Cu : 0x1A2670u);
+        text_fit(fit, sizeof fit, tr(r.label), r.kind == MK_ACTION || r.kind == MK_SUB ? ROW_W - 30 : r.kind == MK_TEXT ? (mm_page == MM_PAD ? 44 : 100) : MM_VAL_X - ROW_X - 14);
         text_draw(&cv, ROW_X + 8, ty, fit, on ? UI_GOLD : UI_TEXT, 1);
         if (r.kind == MK_VALUE) {
             text_fit(fit, sizeof fit, tr(r.val), 84);
@@ -1953,19 +1957,23 @@ static void mm_draw(const uint8_t *fb) {
             ui_bar(&cv, MM_BAR_X, y + 6, MM_BAR_W, 7, r.pct);
             text_right(&cv, ROW_X + ROW_W - 6, ty, r.val, on ? UI_GOOD : UI_TEXT);
         } else if (r.kind == MK_TEXT) {
-            text_fit(fit, sizeof fit, r.val, 100);
-            text_right(&cv, ROW_X + ROW_W - 8, ty, fit, r.val[0] == '-' && !r.val[1] ? UI_DIM : (on ? UI_GOOD : UI_TEXT));
+            text_fit(fit, sizeof fit, r.val, mm_page == MM_PAD ? 66 : 100);
+            text_right(&cv, ROW_X + mm_roww(mm_page) - 8, ty, fit, r.val[0] == '-' && !r.val[1] ? UI_DIM : (on ? UI_GOOD : UI_TEXT));
         } else if (r.kind == MK_SUB) ui_arrow(&cv, ROW_X + ROW_W - 12, ty, 1, on ? UI_TEXT : UI_DIM);
     }
     if (n > MM_VIS) { /* the arrows of the foot and where the window is */
         int bar_h = (PH - 66) * MM_VIS / n, bar_y = MM_ROW_Y + (PH - 66 - bar_h) * first / (n - MM_VIS);
         cv_rect(&cv, PX + PW - 7, bar_y, 2, bar_h, UI_DIM);
         mm_button(ROW_X, MM_ROW_Y + MM_VIS * MM_ROW_H + 1, 34, 14, 0x2A3A90u);
-        mm_button(ROW_X + ROW_W - 34, MM_ROW_Y + MM_VIS * MM_ROW_H + 1, 34, 14, 0x2A3A90u);
+        mm_button(ROW_X + mm_roww(mm_page) - 34, MM_ROW_Y + MM_VIS * MM_ROW_H + 1, 34, 14, 0x2A3A90u);
         for (i = 0; i < 4; i++) { /* a small triangle up on the left, down on the right */
             cv_rect(&cv, ROW_X + 17 - i, MM_ROW_Y + MM_VIS * MM_ROW_H + 4 + i, 1 + 2 * i, 1, first > 0 ? UI_TEXT : 0x4A5688u);
-            cv_rect(&cv, ROW_X + ROW_W - 17 - i, MM_ROW_Y + MM_VIS * MM_ROW_H + 11 - i, 1 + 2 * i, 1, first + MM_VIS < n ? UI_TEXT : 0x4A5688u);
+            cv_rect(&cv, ROW_X + mm_roww(mm_page) - 17 - i, MM_ROW_Y + MM_VIS * MM_ROW_H + 11 - i, 1 + 2 * i, 1, first + MM_VIS < n ? UI_TEXT : 0x4A5688u);
         }
+    }
+    if (mm_page == MM_PAD) { /* the pad with the button under the cursor lit, and its box, as on the Controls tab */
+        ctl_pad_draw(s >= 1 ? s - 1 : -1);
+        ctl_detail(menu_player, s);
     }
     if (mm_page == MM_OPTS && s < GOPTS && gopt_desc(s)) { /* the help line of the option under the cursor, in the strip under the list */
         text_fit(fit, sizeof fit, gopt_desc(s), ROW_W);
@@ -1982,10 +1990,15 @@ static void mm_draw(const uint8_t *fb) {
             mm_button(92, 112, 72, 24, 0xA03C3Cu);
             text_center(&cv, 92, 72, 120, tr("Cancel"), UI_TEXT);
         } else {
+            char yes[48], no[48];
+            if (pads[0]) { /* with a controller the answer comes from its buttons: A says yes, any other says no */
+                snprintf(yes, sizeof yes, "%s (A)", tr("Yes"));
+                snprintf(no, sizeof no, "%s (B)", tr("No"));
+            } else { snprintf(yes, sizeof yes, "%s", tr("Yes")); snprintf(no, sizeof no, "%s", tr("No")); }
             mm_button(44, 112, 72, 24, 0x3C8C40u);
-            text_center(&cv, 44, 72, 120, tr("Yes"), UI_TEXT);
+            text_center(&cv, 44, 72, 120, yes, UI_TEXT);
             mm_button(140, 112, 72, 24, 0xA03C3Cu);
-            text_center(&cv, 140, 72, 120, tr("No"), UI_TEXT);
+            text_center(&cv, 140, 72, 120, no, UI_TEXT);
         }
     }
     menu_tick++;
@@ -2017,8 +2030,13 @@ static int mm_tap(int cx, int cy) {
         }
         return 1;
     }
+    if (mm_page == MM_PAD && cx >= CTL_RX - 2) { /* a tap on a button of the picture picks it and waits for the controller button to give it */
+        int b = ctl_pad_hit(cx, cy);
+        if (b >= 0) { mm_sel[mm_page] = b + 1; mm_follow(); menu_msg[0] = 0; mm_change(mm_page, b + 1, 0); }
+        return 1;
+    }
     i = mm_scroll[mm_page] + (cy - MM_ROW_Y) / MM_ROW_H;
-    if (cx < ROW_X || cx >= ROW_X + ROW_W || i >= n) return 1;
+    if (cx < ROW_X || cx >= ROW_X + mm_roww(mm_page) || i >= n) return 1;
     mm_sel[mm_page] = i;
     menu_msg[0] = 0;
     mm_row(mm_page, i, &r);
