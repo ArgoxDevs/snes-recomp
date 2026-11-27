@@ -95,7 +95,7 @@ static void on_tcc_error(void *opaque, const char *msg) {
 static const char *const libc_names[] = {
     "memcpy", "memmove", "memset", "memcmp", "strlen", "strcmp", "strncmp", "strchr", "strrchr", "strstr", "strcspn",
     "strcpy", "strncpy", "malloc", "calloc", "realloc", "free", "exit", "atoi", "strtol", "strtoul", "fopen", "fclose",
-    "fread", "fwrite", "fprintf", "snprintf", "fputs", "fputc", "fgets", "stat", "stderr", NULL};
+    "fread", "fwrite", "fprintf", "snprintf", "fputs", "fputc", "fgets", "stat", "stderr", "time", NULL};
 
 static void *stdout_pump(void *arg) {
     int fd = (int)(intptr_t)arg;

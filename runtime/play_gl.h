@@ -10,37 +10,6 @@
 #define GLAPI_CALL APIENTRY
 #else
 #define GLAPI_CALL
-/* The layer of the menu over what gl_draw() drew: the whole target dimmed (`dim`, 0 to 255, of black) and then the picture
- * `rgba` (lw x lh, alpha 0 where the game shows through) magnified by `scale` with its corner at (ox, oy). */
-static void gl_layer(const uint8_t *rgba, int lw, int lh, int aw, int ah, int ox, int oy, int scale, int dim) {
-    if (!gl_layer_prog) return;
-    gl.Viewport(0, 0, aw, ah);
-    gl.Enable(GL_BLEND_);
-    gl.BlendFunc(GL_SRC_ALPHA_, GL_ONE_MINUS_SRC_ALPHA_);
-    gl.UseProgram(gl_layer_prog);
-    gl.BindVertexArray(gl_vao);
-    gl.Uniform4f(gl_layer_u_rect, -1.0f, -1.0f, 1.0f, 1.0f);
-    gl.Uniform4f(gl_layer_u_fx, 0.0f, 0.0f, 0.0f, dim / 255.0f);
-    gl.DrawArrays(GL_TRIANGLE_STRIP_, 0, 4);
-    gl.BindTexture(GL_TEXTURE_2D_, gl_layer_tex);
-    gl.PixelStorei(GL_UNPACK_ALIGNMENT_, 1);
-    if (gl_layer_w != lw || gl_layer_h != lh) {
-        gl.TexParameteri(GL_TEXTURE_2D_, GL_TEXTURE_MIN_FILTER_, GL_NEAREST_);
-        gl.TexParameteri(GL_TEXTURE_2D_, GL_TEXTURE_MAG_FILTER_, GL_NEAREST_);
-        gl.TexParameteri(GL_TEXTURE_2D_, GL_TEXTURE_WRAP_S_, GL_CLAMP_TO_EDGE_);
-        gl.TexParameteri(GL_TEXTURE_2D_, GL_TEXTURE_WRAP_T_, GL_CLAMP_TO_EDGE_);
-        gl.TexImage2D(GL_TEXTURE_2D_, 0, GL_RGBA8_, lw, lh, 0, GL_RGBA_, GL_UNSIGNED_BYTE_, rgba);
-        gl_layer_w = lw; gl_layer_h = lh;
-    } else {
-        gl.TexSubImage2D(GL_TEXTURE_2D_, 0, 0, 0, lw, lh, GL_RGBA_, GL_UNSIGNED_BYTE_, rgba);
-    }
-    gl.Uniform1i(gl_layer_u_tex, 0);
-    gl.Uniform4f(gl_layer_u_fx, 0.0f, 0.0f, 0.0f, -1.0f);
-    gl.Uniform4f(gl_layer_u_rect, 2.0f * ox / aw - 1.0f, 1.0f - 2.0f * (oy + lh * scale) / ah, 2.0f * (ox + lw * scale) / aw - 1.0f, 1.0f - 2.0f * oy / ah);
-    gl.DrawArrays(GL_TRIANGLE_STRIP_, 0, 4);
-    gl.Disable(GL_BLEND_);
-}
-
 #endif
 
 typedef unsigned int GLenum_t;

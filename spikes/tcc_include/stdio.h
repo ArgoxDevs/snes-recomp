@@ -14,5 +14,6 @@ size_t fwrite(const void *p, size_t size, size_t n, FILE *f);
 int fprintf(FILE *f, const char *fmt, ...);
 int snprintf(char *s, size_t n, const char *fmt, ...);
 int fputs(const char *s, FILE *f);
+int fputc(int c, FILE *f);
 char *fgets(char *s, int n, FILE *f);
 #endif

@@ -1712,7 +1712,7 @@ static void menu_draw(const uint8_t *fb) {
  * closes. A page with more than MM_VIS rows scrolls: the pad follows the cursor, and arrows at the foot move a page for a finger. */
 enum { MM_MAIN, MM_SESSION, MM_SCREEN, MM_SOUND, MM_TOUCH, MM_PAD, MM_OPTS, MM_PAGES };
 enum { MK_ACTION, MK_VALUE, MK_SLIDER, MK_SUB, MK_TEXT }; /* MK_TEXT: the value is only shown, at the right, and a tap does the action */
-enum { MM_ROW_H = 20, MM_ROW_Y = 34, MM_VIS = 8, MM_VAL_X = 126, MM_BAR_X = 130, MM_BAR_W = 66 };
+enum { MM_ROW_H = 19, MM_ROW_Y = 34, MM_VIS = 8, MM_VAL_X = 126, MM_BAR_X = 130, MM_BAR_W = 66 };
 typedef struct { const char *label; int kind; char val[64]; int pct, dimL, dimR; } MRow;
 static const char *const mm_titles[MM_PAGES] = {"OPTIONS", "Session", "Screen", "Sound", "Touch controls", "Controller", "Game options"};
 static const int mm_screen_opts[] = {O_FILTER, O_SCALING, O_WIDE, O_SCANLINES, O_FPS};
@@ -1969,7 +1969,7 @@ static void mm_draw(const uint8_t *fb) {
     }
     if (mm_page == MM_OPTS && s < GOPTS && gopt_desc(s)) { /* the help line of the option under the cursor, in the strip under the list */
         text_fit(fit, sizeof fit, gopt_desc(s), ROW_W);
-        text_center(&cv, ROW_X, ROW_W, MM_ROW_Y + MM_VIS * MM_ROW_H + 16, fit, UI_DIM);
+        text_center(&cv, ROW_X, ROW_W, MM_ROW_Y + MM_VIS * MM_ROW_H + 18, fit, UI_TEXT);
     }
     if (menu_msg[0] && !menu_confirm) { text_fit(fit, sizeof fit, menu_msg, ROW_W - 80); text_center(&cv, ROW_X + 38, ROW_W - 76, MM_ROW_Y + MM_VIS * MM_ROW_H + 5, fit, UI_WARN); }
     if (menu_ask || menu_confirm || menu_capture >= 0) { /* the question over everything: two buttons, or one to cancel the wait for a button */
