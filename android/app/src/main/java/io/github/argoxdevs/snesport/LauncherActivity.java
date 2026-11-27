@@ -116,13 +116,29 @@ public class LauncherActivity extends Activity {
         try {
             Uri uri = data.getData();
             File tmp = new File(getFilesDir(), "rom.tmp");
-            CRC32 crc = new CRC32();
+            byte[] head = new byte[4];
+            long size = 0;
             try (InputStream in = getContentResolver().openInputStream(uri); OutputStream out = new FileOutputStream(tmp)) {
                 byte[] buf = new byte[1 << 16];
                 for (int n; (n = in.read(buf)) > 0; ) {
-                    crc.update(buf, 0, n);
+                    if (size == 0) System.arraycopy(buf, 0, head, 0, Math.min(n, 4));
+                    size += n;
                     out.write(buf, 0, n);
                 }
+            }
+            String archive = archiveKind(head);
+            if (archive != null) {
+                tmp.delete();
+                message.setText(getString(R.string.rom_archive, archive));
+                return;
+            }
+            // un volcado con cabecera de copión (.smc, 512 bytes) vale: el CRC32 es el del resto, como en Windows y Linux
+            long skip = size % 1024 == 512 ? 512 : 0;
+            CRC32 crc = new CRC32();
+            try (InputStream in = new java.io.FileInputStream(tmp)) {
+                if (in.skip(skip) != skip) throw new IOException("short file");
+                byte[] buf = new byte[1 << 16];
+                for (int n; (n = in.read(buf)) > 0; ) crc.update(buf, 0, n);
             }
             String want = expectedCrc();
             String got = String.format("%08X", crc.getValue());
@@ -131,6 +147,16 @@ public class LauncherActivity extends Activity {
                 message.setText(getString(R.string.rom_bad, got, want));
                 return;
             }
+            if (skip != 0) { // la ROM que se guarda va sin la cabecera
+                File bare = new File(getFilesDir(), "rom.bare");
+                try (InputStream in = new java.io.FileInputStream(tmp); OutputStream out = new FileOutputStream(bare)) {
+                    if (in.skip(skip) != skip) throw new IOException("short file");
+                    byte[] buf = new byte[1 << 16];
+                    for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+                }
+                tmp.delete();
+                if (!bare.renameTo(tmp)) throw new IOException("no puedo guardar la ROM");
+            }
             File rom = new File(getFilesDir(), "rom.sfc");
             rom.delete();
             if (!tmp.renameTo(rom)) throw new IOException("no puedo guardar la ROM");
@@ -138,6 +164,14 @@ public class LauncherActivity extends Activity {
         } catch (IOException e) {
             message.setText(getString(R.string.rom_read_fail, e.getMessage()));
         }
+    }
+
+    /** El tipo de archivo comprimido que dicen los primeros bytes (quien baja la ROM en un .zip lo elige sin extraerlo), o null. */
+    static String archiveKind(byte[] h) {
+        if (h[0] == 'P' && h[1] == 'K' && h[2] == 3 && h[3] == 4) return "ZIP";
+        if (h[0] == '7' && h[1] == 'z' && (h[2] & 0xFF) == 0xBC && (h[3] & 0xFF) == 0xAF) return "7-Zip";
+        if (h[0] == 'R' && h[1] == 'a' && h[2] == 'r' && h[3] == '!') return "RAR";
+        return null;
     }
 
     /** Con el ajuste activo: una consulta al día (si no, lo último que se supo); si hay versión nueva que no se omitió, pregunta. */

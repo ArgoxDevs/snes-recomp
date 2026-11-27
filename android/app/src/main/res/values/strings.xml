@@ -10,7 +10,8 @@
     <string name="play">Play</string>
     <string name="auto_check">Check for updates on start (uses the Internet)</string>
     <string name="check_now">Check for updates now</string>
-    <string name="rom_bad">This is not the expected ROM (CRC32 %1$s, expected %2$s). Try the USA version without a header.</string>
+    <string name="rom_bad">This is not the expected ROM (CRC32 %1$s, expected %2$s). Try the USA version. You need an unmodified dump (a .sfc or .smc).</string>
+    <string name="rom_archive">This file is a %1$s archive, not a ROM. Extract the .sfc or .smc file from it first.</string>
     <string name="rom_read_fail">Could not read the ROM: %1$s</string>
     <string name="checking">Checking for updates...</string>
     <string name="check_failed">Could not check. Check your connection and try again.</string>

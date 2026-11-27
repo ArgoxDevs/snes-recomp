@@ -584,7 +584,9 @@ pub fn build_port(opts: &Options, compiler: Option<Compiler>, sdl: Option<PathBu
 pub fn build_port_ui(opts: &Options, compiler: Option<Compiler>, sdl: Option<PathBuf>, ui: &dyn Ui) -> Result<Outcome, Failure> {
     let rom = match Rom::load(&opts.rom) {
         Ok(r) => r,
-        Err(e) => return fail(1, e),
+        // a file that is read but is not a ROM (an archive, too small) is a ROM that is not recognised; one that cannot be read is not
+        Err(e) if e.starts_with("cannot read") => return fail(1, e),
+        Err(e) => return fail(EXIT_UNKNOWN_ROM, format!("error: ROM not recognised: {e}")),
     };
     let catalog = match catalog(opts) {
         Ok(c) => c,
@@ -595,7 +597,7 @@ pub fn build_port_ui(opts: &Options, compiler: Option<Compiler>, sdl: Option<Pat
     }
     let crc = rom.crc32();
     let Some(profile) = catalog.identify(crc) else {
-        let mut m = format!("error: unknown ROM: CRC32 {crc:08X}\n");
+        let mut m = format!("error: unknown ROM: CRC32 {crc:08X}\n{}", rom.describe_unknown());
         if catalog.profiles().is_empty() {
             m.push_str(
                 "No game profiles found. snes-port looks for them in `games/` next to the program, in `games/` of the current\n\
@@ -1050,7 +1052,18 @@ crc32=\"0000BEEF\"
         assert!(!cache.exists(), "nothing is created in the cache");
         // a file that is not a ROM at all
         std::fs::write(dir.join("tiny.sfc"), b"nope").unwrap();
-        assert_eq!(build_port(&opts(&dir.join("tiny.sfc"), &cache), None, None).err().unwrap().code, 1);
+        let f = build_port(&opts(&dir.join("tiny.sfc"), &cache), None, None).err().unwrap();
+        assert_eq!(f.code, EXIT_UNKNOWN_ROM);
+        assert!(f.message.contains("too small"), "{}", f.message);
+        // a file that does not exist cannot be read: an ordinary error, not an unknown ROM
+        assert_eq!(build_port(&opts(&dir.join("missing.sfc"), &cache), None, None).err().unwrap().code, 1);
+        // an archive says so
+        let mut zip = b"PK\x03\x04".to_vec();
+        zip.resize(0x9000, 7);
+        std::fs::write(dir.join("game.zip"), &zip).unwrap();
+        let f = build_port(&opts(&dir.join("game.zip"), &cache), None, None).err().unwrap();
+        assert_eq!(f.code, EXIT_UNKNOWN_ROM);
+        assert!(f.message.contains("ZIP archive"), "{}", f.message);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

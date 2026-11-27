@@ -62,6 +62,7 @@ pub enum Key {
     Licences,
     /// `{v}` is replaced.
     VersionLabel,
+    UnknownRomHint,
     /// What the language button says: the language it is in now.
     LangButton,
 }
@@ -89,6 +90,7 @@ pub fn text(lang: Lang, key: Key) -> &'static str {
             DownloadNo => "Not now",
             ErrorTitle => "Something went wrong",
             UnknownRomTitle => "ROM not recognised",
+            UnknownRomHint => "Tip: you need an unmodified dump of one of those versions (a .sfc or .smc; if you downloaded a .zip, extract it first).",
             NoCompilerTitle => "A C compiler is needed",
             BuildFailedTitle => "The game could not be built",
             GameFailedTitle => "The game stopped with an error",
@@ -129,6 +131,7 @@ pub fn text(lang: Lang, key: Key) -> &'static str {
             DownloadNo => "Ahora no",
             ErrorTitle => "Algo ha fallado",
             UnknownRomTitle => "ROM no reconocida",
+            UnknownRomHint => "Consejo: hace falta un volcado sin modificar de una de esas versiones (un .sfc o .smc; si lo descargaste en un .zip, extráelo antes).",
             NoCompilerTitle => "Hace falta un compilador de C",
             BuildFailedTitle => "No se pudo construir el juego",
             GameFailedTitle => "El juego se cerró con un error",
@@ -257,7 +260,10 @@ pub fn failure_title(lang: Lang, code: i32) -> &'static str {
 
 /// The screen for a failure: the title by kind and the message exactly as the console prints it.
 pub fn failed(lang: Lang, code: i32, message: &str) -> Screen {
-    Screen::Failed { title: failure_title(lang, code).to_string(), detail: message.to_string() }
+    // the message is the console's, untouched; for an unknown ROM a tip in the language of the window follows it
+    let detail = if code == port::EXIT_UNKNOWN_ROM { format!("{}
+{}", message.trim_end(), text(lang, Key::UnknownRomHint)) } else { message.to_string() };
+    Screen::Failed { title: failure_title(lang, code).to_string(), detail }
 }
 
 /// The screen for a game that started and stopped with an error code.
@@ -311,7 +317,7 @@ mod tests {
         let all = [
             WindowTitle, Tagline, PickPrompt, PickTitle, PickFilter, PickAction, ChangeAction, PlayAction, PlayWith, FirstBuild, Working, CopyDetail,
             Copied, Close, ChooseAnother, DownloadYes, DownloadNo, ErrorTitle, UnknownRomTitle, NoCompilerTitle, BuildFailedTitle, GameFailedTitle,
-            UpdateInstall, UpdateSkip, UpdateLater, CheckNow, Checking, Licences, VersionLabel, LangButton,
+            UpdateInstall, UpdateSkip, UpdateLater, CheckNow, Checking, Licences, VersionLabel, UnknownRomHint, LangButton,
         ];
         for k in all {
             let (en, es) = (text(Lang::En, k), text(Lang::Es, k));
@@ -332,7 +338,8 @@ mod tests {
         let msg = "error: unknown ROM: CRC32 DEADBEEF\nSupported games:\n  A (CRC32 00000001)\n";
         match failed(Lang::Es, port::EXIT_UNKNOWN_ROM, msg) {
             Screen::Failed { detail, title } => {
-                assert_eq!(detail, msg, "the detail is the console message, untouched");
+                assert!(detail.starts_with(msg.trim_end()), "the detail is the console message, untouched");
+                assert!(detail.ends_with(text(Lang::Es, Key::UnknownRomHint)), "followed by the tip");
                 assert_eq!(title, text(Lang::Es, Key::UnknownRomTitle));
             }
             other => panic!("{other:?}"),

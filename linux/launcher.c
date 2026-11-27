@@ -58,7 +58,7 @@ static char exe_path[4096], exe_dir[4096], assets[4096], data_dir[4096];
 enum {
     S_CHECK_UPDATES, S_PLAY, S_CHOOSE, S_CHANGE, S_UPDATE, S_NOT_NOW, S_SKIP, S_NEWVER, S_INSTALLING, S_UPDATED, S_UPDATED_STATUS,
     S_UPD_FAIL, S_UPD_FAIL_STATUS, S_NO_CHECK, S_SKIPPED, S_UPTODATE, S_SEARCHING, S_PICK_MSG, S_NO_DIALOG, S_CANT_READ, S_WRONG_ROM,
-    S_PREP1, S_PREP2, S_BAD_ROM, S_NO_COMPILE, S_NO_LINK, S_DLG_TITLE, S_DLG_FILTER, S_DLG_ALL, S_LICENCES, S_CHECK_NOW, S_CLOSE, S_LIC_INTRO, S_LIC_MISSING, S_N
+    S_PREP1, S_PREP2, S_ARCHIVE, S_BAD_ROM, S_NO_COMPILE, S_NO_LINK, S_DLG_TITLE, S_DLG_FILTER, S_DLG_ALL, S_LICENCES, S_CHECK_NOW, S_CLOSE, S_LIC_INTRO, S_LIC_MISSING, S_N
 };
 static const char *const strs[S_N][2] = {
     [S_CHECK_UPDATES] = {"Check for updates (uses the Internet)", "Buscar actualizaciones (usa Internet)"},
@@ -85,11 +85,13 @@ static const char *const strs[S_N][2] = {
     [S_NO_DIALOG] = {"There is no file picker (zenity or kdialog).\nDrag the ROM onto this window, or run:\n./alttp-recomp path/to/alttp_usa.sfc",
                      "No hay un selector de archivos (zenity o kdialog).\nArrastra la ROM a esta ventana, o ejecuta:\n./alttp-recomp ruta/a/alttp_usa.sfc"},
     [S_CANT_READ] = {"Cannot read the file:\n%.100s", "No puedo leer el archivo:\n%.100s"},
-    [S_WRONG_ROM] = {"This is not the expected ROM (CRC32 %s, expected %s).\nTry the USA version.",
-                     "Esta ROM no es la esperada (CRC32 %s, se esperaba %s).\nPrueba con la versión USA."},
+    [S_WRONG_ROM] = {"This is not the expected ROM (CRC32 %s, expected %s).\nTry the USA version: an unmodified dump (.sfc or .smc).",
+                     "Esta ROM no es la esperada (CRC32 %s, se esperaba %s).\nPrueba con la versión USA: un volcado sin modificar (.sfc o .smc)."},
     [S_PREP1] = {"Getting the game ready (1 of 2)...\nOnly the first time of each start; a few seconds.",
                  "Preparando el juego (1 de 2)...\nSolo la primera vez de cada arranque; unos segundos."},
     [S_PREP2] = {"Getting the game ready (2 of 2)...", "Preparando el juego (2 de 2)..."},
+    [S_ARCHIVE] = {"This file is a %s archive, not a ROM.\nExtract the .sfc or .smc file from it first.",
+                   "Este archivo es un comprimido %s, no una ROM.\nExtrae antes el .sfc o .smc."},
     [S_BAD_ROM] = {"This ROM does not work: %.200s", "Esta ROM no sirve: %.200s"},
     [S_NO_COMPILE] = {"The game's C does not compile (details in the terminal).", "El C del juego no compila (detalles en la terminal)."},
     [S_NO_LINK] = {"The game could not be linked.", "No se pudo enlazar el juego."},
@@ -479,6 +481,10 @@ static int check_rom(const char *path, char *why, size_t why_n) {
     uint8_t *d = (uint8_t *)read_file(path, &len);
     char got[16];
     if (!d) { snprintf(why, why_n, TR(S_CANT_READ), path); return 1; }
+    {   /* un comprimido (lo habitual: el .zip que se bajó) no es una ROM */
+        const char *kind = len >= 4 && !memcmp(d, "PK\x03\x04", 4) ? "ZIP" : len >= 4 && !memcmp(d, "7z\xBC\xAF", 4) ? "7-Zip" : len >= 4 && !memcmp(d, "Rar!", 4) ? "RAR" : NULL;
+        if (kind) { free(d); snprintf(why, why_n, TR(S_ARCHIVE), kind); return 1; }
+    }
     if (len % 1024 == 512) skip = 512; /* cabecera de copión */
     snprintf(got, sizeof got, "%08X", crc32_of(d + skip, len - skip));
     free(d);

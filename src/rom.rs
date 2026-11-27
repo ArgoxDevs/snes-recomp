@@ -41,14 +41,52 @@ impl Rom {
 
     /// Accepts headered (.smc) and unheadered (.sfc) dumps.
     pub fn from_bytes(mut data: Vec<u8>) -> Result<Rom, String> {
+        if let Some(kind) = archive_kind(&data) {
+            return Err(format!("this file is a {kind} archive, not a ROM: extract the .sfc or .smc file from it first"));
+        }
         let had_copier_header = data.len() % 0x8000 == COPIER_HEADER_LEN;
         if had_copier_header {
             data.drain(..COPIER_HEADER_LEN);
         }
         if data.len() < 0x8000 {
-            return Err(format!("ROM too small ({} bytes)", data.len()));
+            return Err(format!("this file is too small to be a ROM ({} bytes): is it the whole game?", data.len()));
         }
         Ok(Rom { data, had_copier_header })
+    }
+
+    /// What to tell a person whose ROM no profile knows: what the file is, and the usual reasons for a different CRC32.
+    pub fn describe_unknown(&self) -> String {
+        let mut m = format!("Your file: {} bytes", self.data.len());
+        if self.had_copier_header {
+            m.push_str(" (a 512-byte copier header was removed before the check)");
+        }
+        let h = self.header();
+        let region = match h.country {
+            0 => "Japan",
+            1 => "USA",
+            2 => "Europe",
+            3 => "Sweden",
+            4 => "Finland",
+            5 => "Denmark",
+            6 => "France",
+            7 => "Netherlands",
+            8 => "Spain",
+            9 => "Germany",
+            0x0A => "Italy",
+            _ => "unknown",
+        };
+        let title_ok = h.title.chars().filter(|c| *c != '?').count() * 2 >= h.title.chars().count() && !h.title.is_empty();
+        if title_ok {
+            m.push_str(&format!(", internal title \"{}\", region code {:02X} ({region}).\n", h.title, h.country));
+        } else {
+            m.push_str(".\n");
+        }
+        if self.data.len() % 0x8000 != 0 {
+            m.push_str("The size is not a whole number of 32 KiB banks: the file looks cut short or altered.\n");
+        }
+        m.push_str("The game needs an unmodified dump of one of the versions below. Another region or revision, a translation patch or a ");
+        m.push_str("ROM hack has a different CRC32 and is refused.\n");
+        m
     }
 
     /// The image without the copier header.
@@ -111,6 +149,12 @@ impl Rom {
     }
 }
 
+/// The kind of archive a file is, if its first bytes say so (people often point the launcher at the .zip they downloaded).
+pub fn archive_kind(data: &[u8]) -> Option<&'static str> {
+    const KINDS: [(&[u8], &str); 5] = [(&[0x50, 0x4B, 0x03, 0x04], "ZIP"), (&[0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C], "7-Zip"), (b"Rar!", "RAR"), (&[0x1F, 0x8B], "gzip"), (b"BZh", "bzip2")];
+    KINDS.iter().find(|(magic, _)| data.starts_with(magic)).map(|(_, k)| *k)
+}
+
 #[cfg(test)]
 pub(crate) fn test_rom(code: &[(u32, &[u8])]) -> Rom {
     let mut data = vec![0u8; 0x10000];
@@ -133,6 +177,21 @@ mod tests {
         assert_eq!(rom.lorom_offset(0x01_8000), Some(0x8000));
         assert_eq!(rom.lorom_offset(0x00_2100), None);
         assert_eq!(rom.lorom_offset(0x7E_8000), None);
+    }
+
+    #[test]
+    fn an_archive_is_not_a_rom_and_an_unknown_one_is_described() {
+        let mut zip = b"PK\x03\x04".to_vec();
+        zip.resize(0x9000, 0);
+        let e = Rom::from_bytes(zip).err().unwrap();
+        assert!(e.contains("ZIP archive") && e.contains("extract"), "{e}");
+        assert!(Rom::from_bytes(b"nope".to_vec()).err().unwrap().contains("too small"));
+        let d = Rom::from_bytes(vec![0; 0x8000 + 0x200]).unwrap().describe_unknown();
+        assert!(d.contains("copier header was removed") && !d.contains("internal title") && !d.contains("cut short"), "{d}");
+        let d = Rom::from_bytes(vec![0; 0x8005]).unwrap().describe_unknown();
+        assert!(d.contains("cut short") && !d.contains("copier"), "{d}");
+        let d = Rom::from_bytes(vec![0; 0x10000]).unwrap().describe_unknown();
+        assert!(!d.contains("cut short") && !d.contains("copier"), "{d}");
     }
 
     #[test]

@@ -9,7 +9,8 @@
     <string name="play">Jugar</string>
     <string name="auto_check">Buscar actualizaciones al abrir (usa Internet)</string>
     <string name="check_now">Buscar actualizaciones ahora</string>
-    <string name="rom_bad">Esta ROM no es la esperada (CRC32 %1$s, se esperaba %2$s). Prueba con la versión USA sin cabecera.</string>
+    <string name="rom_bad">Esta ROM no es la esperada (CRC32 %1$s, se esperaba %2$s). Prueba con la versión USA. Hace falta un volcado sin modificar (un .sfc o .smc).</string>
+    <string name="rom_archive">Este archivo es un comprimido %1$s, no una ROM. Extrae antes el .sfc o .smc.</string>
     <string name="rom_read_fail">No he podido leer la ROM: %1$s</string>
     <string name="checking">Buscando actualizaciones...</string>
     <string name="check_failed">No se pudo comprobar. Revisa la conexión e inténtalo de nuevo.</string>
