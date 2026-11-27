@@ -254,7 +254,7 @@ pub fn install(info: &Info, install_dir: &Path, work: &Path) -> Result<String, S
     download::fetch_verified(url, &hash, &pkg)?;
     let out = work.join("x");
     std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
-    let t = Command::new("tar").arg("-xf").arg(&pkg).arg("-C").arg(&out).output().map_err(|e| format!("cannot run tar: {e}"))?;
+    let t = download::tar_command().arg("-xf").arg(&pkg).arg("-C").arg(&out).output().map_err(|e| format!("cannot run tar: {e}"))?;
     if !t.status.success() {
         return Err(format!("cannot unpack {name}: {}", String::from_utf8_lossy(&t.stderr).trim()));
     }
@@ -482,5 +482,20 @@ mod tests {
         assert!(!to.join("app.new").exists());
         clean_old(&to);
         assert!(!to.join("app.old").exists());
+    }
+    /// Real update against GitHub (network; `cargo test -- --ignored real_update`): `SNES_UPD_REAL_DIR` is an unpacked
+    /// older package of a game (with `update.info`); it is updated in place to the latest release.
+    #[test]
+    #[ignore]
+    fn real_update_from_github() {
+        let dir = PathBuf::from(std::env::var("SNES_UPD_REAL_DIR").expect("SNES_UPD_REAL_DIR"));
+        let info = read_info(&dir).expect("update.info");
+        match check(&tmp("real-settings"), &info, true) {
+            Outcome::Available { tag, .. } => println!("available: {tag} (installed {})", info.version),
+            _ => panic!("no newer version offered for {}", info.version),
+        }
+        let v = install(&info, &dir, &tmp("real-work")).expect("install");
+        println!("installed {v}");
+        assert_eq!(read_info(&dir).unwrap().version, v);
     }
 }

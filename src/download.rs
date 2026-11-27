@@ -50,6 +50,21 @@ pub fn installed(cache: &Path, p: &Portable) -> Option<PathBuf> {
 /// How many times a download is tried before giving up.
 const ATTEMPTS: usize = 4;
 
+/// `tar` to unpack zips and tarballs. On Windows the one of the system (bsdtar, in System32): the `tar` of Git Bash, which
+/// can come first in PATH, reads a path with `C:` as a remote host and fails.
+pub fn tar_command() -> Command {
+    #[cfg(windows)]
+    {
+        if let Some(root) = std::env::var_os("SystemRoot") {
+            let p = Path::new(&root).join("System32").join("tar.exe");
+            if p.is_file() {
+                return Command::new(p);
+            }
+        }
+    }
+    Command::new("tar")
+}
+
 /// Downloads `url` into `dest`, keeping it only if its SHA-256 is `sha256` (hex). A file that does not match is
 /// deleted and an error says so.
 pub fn fetch_verified(url: &str, sha256: &str, dest: &Path) -> Result<(), String> {
@@ -93,7 +108,7 @@ pub fn install(cache: &Path, p: &Portable) -> Result<PathBuf, String> {
     let zip = dir.join("compiler.zip");
     fetch_verified(p.url, p.sha256, &zip)?;
     // `tar` (bsdtar, part of Windows 10 and later) unpacks zip files
-    let out = Command::new("tar").arg("-xf").arg(&zip).arg("-C").arg(&dir).output().map_err(|e| format!("cannot run tar to unpack {}: {e}", zip.display()))?;
+    let out = tar_command().arg("-xf").arg(&zip).arg("-C").arg(&dir).output().map_err(|e| format!("cannot run tar to unpack {}: {e}", zip.display()))?;
     let _ = std::fs::remove_file(&zip);
     if !out.status.success() {
         return Err(format!("cannot unpack {}: {}", p.name, String::from_utf8_lossy(&out.stderr).trim()));
