@@ -82,7 +82,7 @@ const char *rom_dir(void);
 const char *game_dir(void);
 /* An option the profile declares, as snes_entry.c carries it (`snes_game_opts[snes_game_opt_count]`). `desc`: the line the menu shows for it,
  * or NULL. */
-typedef struct { const char *key; const char *label; int n; const char *const *names; int def; const char *desc; } GameOptDef;
+typedef struct { const char *key; const char *label; int n; const char *const *names; int def; const char *desc, *label_es, *desc_es; } GameOptDef; /* label_es and desc_es: the label and the help line for the menu in Spanish, or NULL */
 extern const GameOptDef snes_game_opts[];
 extern const int snes_game_opt_count;
 /* The module of the game hands its table to a runtime built as a library of its own (see snes_rt_module_init). */

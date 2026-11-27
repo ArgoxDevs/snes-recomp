@@ -1533,6 +1533,9 @@ static void ctl_detail(int player, int s) {
 /* One row. `kind`: 0 an action, 1 a value with arrows (`dimL`/`dimR` dim an arrow), 2 a bar at `pct`, 3 only text. */
 static const char *menu_desc_label; /* the label of the row with the cursor in this frame (set by menu_row) */
 static const char *menu_desc_text;  /* or, for an option of the game, its own line (`desc` of the profile) */
+/* The label and the help line of option `i` of the game in the language of the menu. */
+static const char *gopt_label(int i) { return ui_es && snes_game_opts[i].label_es ? snes_game_opts[i].label_es : snes_game_opts[i].label; }
+static const char *gopt_desc(int i) { return ui_es && snes_game_opts[i].desc_es ? snes_game_opts[i].desc_es : snes_game_opts[i].desc; }
 static void menu_row(int i, int on, const char *label, int kind, const char *value, int pct, int dimL, int dimR) {
     int y = ROW_Y + (i - menu_scroll[menu_tab]) * ROW_H, bob = on ? (menu_tick / 10) % 2 : 0;
     char fit[96];
@@ -1673,8 +1676,8 @@ static void menu_draw(const uint8_t *fb) {
             if (i == 0) { opt_label(O_FFSPEED, val, sizeof val); menu_row(i, on, "Fast forward", 1, val, 0, 0, 0); break; }
             if (i - 1 < GOPTS) {
                 gopt_init();
-                menu_row(i, on, snes_game_opts[i - 1].label, 1, snes_game_opts[i - 1].names[gopt_eff[i - 1]], 0, 0, 0);
-                if (on) menu_desc_text = snes_game_opts[i - 1].desc;
+                menu_row(i, on, gopt_label(i - 1), 1, snes_game_opts[i - 1].names[gopt_eff[i - 1]], 0, 0, 0);
+                if (on) menu_desc_text = gopt_desc(i - 1);
                 break;
             }
             menu_row(i, on, i - 1 - GOPTS == 0 ? "Resume" : i - 1 - GOPTS == 1 ? "Save game now" : i - 1 - GOPTS == 2 ? "Restore all defaults" : "Quit", 0, "", 0, 0, 0);
@@ -1820,7 +1823,7 @@ static void mm_row(int page, int i, MRow *r) {
         break;
     default:
         gopt_init();
-        r->label = snes_game_opts[i].label; r->kind = MK_VALUE;
+        r->label = gopt_label(i); r->kind = MK_VALUE;
         snprintf(r->val, sizeof r->val, "%s", snes_game_opts[i].names[gopt_eff[i]]);
         break;
     }
@@ -1963,6 +1966,10 @@ static void mm_draw(const uint8_t *fb) {
             cv_rect(&cv, ROW_X + 17 - i, MM_ROW_Y + MM_VIS * MM_ROW_H + 4 + i, 1 + 2 * i, 1, first > 0 ? UI_TEXT : 0x4A5688u);
             cv_rect(&cv, ROW_X + ROW_W - 17 - i, MM_ROW_Y + MM_VIS * MM_ROW_H + 11 - i, 1 + 2 * i, 1, first + MM_VIS < n ? UI_TEXT : 0x4A5688u);
         }
+    }
+    if (mm_page == MM_OPTS && s < GOPTS && gopt_desc(s)) { /* the help line of the option under the cursor, in the strip under the list */
+        text_fit(fit, sizeof fit, gopt_desc(s), ROW_W);
+        text_center(&cv, ROW_X, ROW_W, MM_ROW_Y + MM_VIS * MM_ROW_H + 16, fit, UI_DIM);
     }
     if (menu_msg[0] && !menu_confirm) { text_fit(fit, sizeof fit, menu_msg, ROW_W - 80); text_center(&cv, ROW_X + 38, ROW_W - 76, MM_ROW_Y + MM_VIS * MM_ROW_H + 5, fit, UI_WARN); }
     if (menu_ask || menu_confirm || menu_capture >= 0) { /* the question over everything: two buttons, or one to cancel the wait for a button */

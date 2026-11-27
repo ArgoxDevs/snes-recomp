@@ -139,6 +139,10 @@ struct RawOption {
     default: String,
     #[serde(default)]
     desc: Option<String>,
+    #[serde(default)]
+    label_es: Option<String>,
+    #[serde(default)]
+    desc_es: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -255,6 +259,14 @@ pub struct GameOption {
     pub default: usize,
     /// One line the menu shows under the list while the cursor is on the option.
     pub desc: Option<String>,
+    /// The same two texts for the menu in Spanish (ASCII and the Spanish letters the menu font draws).
+    pub label_es: Option<String>,
+    pub desc_es: Option<String>,
+}
+
+/// A character the menu font draws: printable ASCII or one of the Spanish letters and marks.
+fn menu_char(c: char) -> bool {
+    (' '..='~').contains(&c) || "áéíóúüñÁÉÍÓÚÜÑ¿¡".contains(c)
 }
 
 /// Longest `key` of a game option (the runtime keeps it in 32 bytes with the terminator).
@@ -501,7 +513,14 @@ impl Config {
                     return Err(format!("option {key:?}: desc must be printable ASCII (the menu font has no more), got {d:?}"));
                 }
             }
-            cfg.options.push(GameOption { key: o.key, label: o.label, names: o.names, default, desc: o.desc });
+            for (what, t) in [("label_es", &o.label_es), ("desc_es", &o.desc_es)] {
+                if let Some(t) = t {
+                    if t.is_empty() || !t.chars().all(menu_char) {
+                        return Err(format!("option {key:?}: {what} must be ASCII or Spanish letters (á é í ó ú ü ñ ¿ ¡), got {t:?}"));
+                    }
+                }
+            }
+            cfg.options.push(GameOption { key: o.key, label: o.label, names: o.names, default, desc: o.desc, label_es: o.label_es, desc_es: o.desc_es });
         }
 
         Ok(cfg)
@@ -677,7 +696,7 @@ label=\"B\"
 names=[\"x\",\"y\",\"z\"]
 default=\"x\"").unwrap();
         assert_eq!(cfg.options.len(), 2);
-        assert_eq!(cfg.options[0], GameOption { key: "language".into(), label: "Language".into(), names: vec!["en".into(), "es".into()], default: 1, desc: None });
+        assert_eq!(cfg.options[0], GameOption { key: "language".into(), label: "Language".into(), names: vec!["en".into(), "es".into()], default: 1, desc: None, label_es: None, desc_es: None });
         assert_eq!(cfg.options[1].default, 0);
         assert!(Config::parse("[[entry]]
 addr=\"00:8000\"").unwrap().options.is_empty(), "no options without [[option]]");
@@ -702,6 +721,8 @@ default=\"{d}\"");
         assert!(Config::parse("[[option]]\nkey=\"k\"\nlabel=\"Idioma \u{f1}\"\nnames=[\"a\",\"b\"]\ndefault=\"a\"").is_err(), "label with a non-ASCII letter");
         assert_eq!(Config::parse("[[option]]\nkey=\"k\"\nlabel=\"K\"\nnames=[\"a\",\"b\"]\ndefault=\"a\"\ndesc=\"Does K\"").unwrap().options[0].desc.as_deref(), Some("Does K"));
         assert!(Config::parse("[[option]]\nkey=\"k\"\nlabel=\"K\"\nnames=[\"a\",\"b\"]\ndefault=\"a\"\ndesc=\"Ma\u{f1}ana\"").is_err(), "desc with a non-ASCII letter");
+        assert_eq!(Config::parse("[[option]]\nkey=\"k\"\nlabel=\"K\"\nnames=[\"a\",\"b\"]\ndefault=\"a\"\nlabel_es=\"Ca\u{f1}a\"\ndesc_es=\"\u{bf}Qu\u{e9}?\"").unwrap().options[0].label_es.as_deref(), Some("Ca\u{f1}a"));
+        assert!(Config::parse("[[option]]\nkey=\"k\"\nlabel=\"K\"\nnames=[\"a\",\"b\"]\ndefault=\"a\"\nlabel_es=\"\u{e7}\"").is_err(), "label_es with a letter the font lacks");
         let fits: String = (0..MAX_OPTIONS).map(|i| opt(&format!("k{i}"), "[\"a\",\"b\"]", "a") + "\n").collect();
         assert_eq!(Config::parse(&fits).unwrap().options.len(), MAX_OPTIONS);
         let many: String = (0..=MAX_OPTIONS).map(|i| opt(&format!("k{i}"), "[\"a\",\"b\"]", "a") + "\n").collect();
