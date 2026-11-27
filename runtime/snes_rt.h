@@ -80,8 +80,9 @@ const char *rom_dir(void);
 /* The folder the profile of the game brings next to its .toml (its C code and its data files, such as `lang/es.txt`), ending in a path
  * separator. `snes-port` passes it with `--game-dir`; without it this is `rom_dir()`. */
 const char *game_dir(void);
-/* An option the profile declares, as snes_entry.c carries it (`snes_game_opts[snes_game_opt_count]`). */
-typedef struct { const char *key; const char *label; int n; const char *const *names; int def; } GameOptDef;
+/* An option the profile declares, as snes_entry.c carries it (`snes_game_opts[snes_game_opt_count]`). `desc`: the line the menu shows for it,
+ * or NULL. */
+typedef struct { const char *key; const char *label; int n; const char *const *names; int def; const char *desc; } GameOptDef;
 extern const GameOptDef snes_game_opts[];
 extern const int snes_game_opt_count;
 /* The module of the game hands its table to a runtime built as a library of its own (see snes_rt_module_init). */

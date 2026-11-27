@@ -60,7 +60,7 @@ Un perfil de juego SHALL describirse por completo en un fichero `.toml`: una sec
 - **THEN** se usa ese perfil, como `snes-port`
 
 ### Requirement: Opciones de juego en el perfil
-El formato del perfil SHALL admitir secciones `[[option]]` con `key` (letras, cifras o `_`, hasta 31 caracteres), `label` (texto del menú), `names` (lista de dos o más nombres distintos) y `default` (uno de ellos). El programa MUST rechazar con un error que nombre el perfil y la clave una opción con `key` repetida, `names` con menos de dos entradas o repetidas, o `default` que no esté en `names`.
+El formato del perfil SHALL admitir secciones `[[option]]` con `key` (letras, cifras o `_`, hasta 31 caracteres), `label` (texto del menú), `names` (lista de dos o más nombres distintos), `default` (uno de ellos) y, opcional, `desc` (una línea de ayuda en ASCII imprimible), hasta 64 opciones por perfil. El programa MUST rechazar con un error que nombre el perfil y la clave una opción con `key` repetida, `names` con menos de dos entradas o repetidas, o `default` que no esté en `names`.
 
 #### Scenario: Opción válida
 - **WHEN** un perfil trae `[[option]] key="language" label="Language" names=["en","es"] default="en"`

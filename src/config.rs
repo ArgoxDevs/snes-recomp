@@ -137,6 +137,8 @@ struct RawOption {
     label: String,
     names: Vec<String>,
     default: String,
+    #[serde(default)]
+    desc: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -251,12 +253,14 @@ pub struct GameOption {
     pub names: Vec<String>,
     /// Index into `names`.
     pub default: usize,
+    /// One line the menu shows under the list while the cursor is on the option.
+    pub desc: Option<String>,
 }
 
 /// Longest `key` of a game option (the runtime keeps it in 32 bytes with the terminator).
 pub const MAX_OPTION_KEY: usize = 31;
 /// Most options a profile can declare (the runtime keeps a fixed table).
-pub const MAX_OPTIONS: usize = 16;
+pub const MAX_OPTIONS: usize = 64;
 
 /// Who a profile is: the `[game]` section.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -492,7 +496,12 @@ impl Config {
             let Some(default) = o.names.iter().position(|n| *n == o.default) else {
                 return Err(format!("option {key:?}: default {:?} is not one of {:?}", o.default, o.names));
             };
-            cfg.options.push(GameOption { key: o.key, label: o.label, names: o.names, default });
+            if let Some(d) = &o.desc {
+                if d.is_empty() || !d.chars().all(|c| (' '..='~').contains(&c)) {
+                    return Err(format!("option {key:?}: desc must be printable ASCII (the menu font has no more), got {d:?}"));
+                }
+            }
+            cfg.options.push(GameOption { key: o.key, label: o.label, names: o.names, default, desc: o.desc });
         }
 
         Ok(cfg)
@@ -668,7 +677,7 @@ label=\"B\"
 names=[\"x\",\"y\",\"z\"]
 default=\"x\"").unwrap();
         assert_eq!(cfg.options.len(), 2);
-        assert_eq!(cfg.options[0], GameOption { key: "language".into(), label: "Language".into(), names: vec!["en".into(), "es".into()], default: 1 });
+        assert_eq!(cfg.options[0], GameOption { key: "language".into(), label: "Language".into(), names: vec!["en".into(), "es".into()], default: 1, desc: None });
         assert_eq!(cfg.options[1].default, 0);
         assert!(Config::parse("[[entry]]
 addr=\"00:8000\"").unwrap().options.is_empty(), "no options without [[option]]");
@@ -691,8 +700,12 @@ default=\"{d}\"");
         assert!(Config::parse(&opt(&"k".repeat(31), "[\"a\",\"b\"]", "a")).is_ok());
         assert!(Config::parse(&opt("k", "[\"a b\",\"c\"]", "c")).is_err(), "name with a space");
         assert!(Config::parse("[[option]]\nkey=\"k\"\nlabel=\"Idioma \u{f1}\"\nnames=[\"a\",\"b\"]\ndefault=\"a\"").is_err(), "label with a non-ASCII letter");
-        let many: String = (0..17).map(|i| opt(&format!("k{i}"), "[\"a\",\"b\"]", "a") + "\n").collect();
-        assert!(Config::parse(&many).unwrap_err().contains("at most 16"), "more than 16 options");
+        assert_eq!(Config::parse("[[option]]\nkey=\"k\"\nlabel=\"K\"\nnames=[\"a\",\"b\"]\ndefault=\"a\"\ndesc=\"Does K\"").unwrap().options[0].desc.as_deref(), Some("Does K"));
+        assert!(Config::parse("[[option]]\nkey=\"k\"\nlabel=\"K\"\nnames=[\"a\",\"b\"]\ndefault=\"a\"\ndesc=\"Ma\u{f1}ana\"").is_err(), "desc with a non-ASCII letter");
+        let fits: String = (0..MAX_OPTIONS).map(|i| opt(&format!("k{i}"), "[\"a\",\"b\"]", "a") + "\n").collect();
+        assert_eq!(Config::parse(&fits).unwrap().options.len(), MAX_OPTIONS);
+        let many: String = (0..=MAX_OPTIONS).map(|i| opt(&format!("k{i}"), "[\"a\",\"b\"]", "a") + "\n").collect();
+        assert!(Config::parse(&many).unwrap_err().contains(&format!("at most {MAX_OPTIONS}")), "more than MAX_OPTIONS options");
         assert!(Config::parse("[[option]]
 key=\"k\"
 label=\"L\"

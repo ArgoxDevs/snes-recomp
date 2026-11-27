@@ -277,7 +277,7 @@ static void gopts_load(const Ini *in) {
         for (k = 0; k < d->n; k++) if (!strcmp(d->names[k], val)) break;
         if (k == d->n) { fprintf(stderr, "warning: config: invalid value '%s' for %s, using the default\n", val, key); continue; }
         gopt_file[i] = k;
-        if (!(gopt_cli >> i & 1)) gopt_eff[i] = k;
+        if (!(gopt_cli >> i & 1u)) gopt_eff[i] = k;
     }
 }
 
@@ -732,6 +732,28 @@ static int image_row_of(int opt) {
     int idx[N_IMAGE], i, n = image_rows(idx);
     for (i = 0; i < n; i++) if (image_opts[idx[i]] == opt) return i;
     return -1;
+}
+
+/* The desktop menu shows MENU_VIS rows of a tab at a time: a longer list (the options of a game with many) scrolls, the window
+ * follows the cursor and the mouse wheel moves it. The Controls tab has its own layout and never scrolls. */
+enum { MENU_VIS = 13 };
+static int menu_scroll[TAB_COUNT];
+static int menu_count(int tab);
+static int menu_vis(int tab) { return tab == TAB_CONTROLS ? menu_count(tab) : MENU_VIS; }
+
+/* Keeps the scroll of `tab` inside the list; with `follow` it moves it so the cursor is seen, else it moves the cursor into it. */
+static void menu_scroll_fix(int tab, int follow) {
+    int n = menu_count(tab), vis = menu_vis(tab), *sc = &menu_scroll[tab], *s = &menu_sel[tab];
+    if (follow) {
+        if (*s < *sc) *sc = *s;
+        if (*s >= *sc + vis) *sc = *s - vis + 1;
+    }
+    if (*sc > n - vis) *sc = n - vis;
+    if (*sc < 0) *sc = 0;
+    if (!follow) {
+        if (*s < *sc) *s = *sc;
+        if (*s >= *sc + vis) *s = *sc + vis - 1;
+    }
 }
 
 static int menu_count(int tab) {
@@ -1510,8 +1532,9 @@ static void ctl_detail(int player, int s) {
 
 /* One row. `kind`: 0 an action, 1 a value with arrows (`dimL`/`dimR` dim an arrow), 2 a bar at `pct`, 3 only text. */
 static const char *menu_desc_label; /* the label of the row with the cursor in this frame (set by menu_row) */
+static const char *menu_desc_text;  /* or, for an option of the game, its own line (`desc` of the profile) */
 static void menu_row(int i, int on, const char *label, int kind, const char *value, int pct, int dimL, int dimR) {
-    int y = ROW_Y + i * ROW_H, bob = on ? (menu_tick / 10) % 2 : 0;
+    int y = ROW_Y + (i - menu_scroll[menu_tab]) * ROW_H, bob = on ? (menu_tick / 10) % 2 : 0;
     char fit[96];
     if (on) { cv_rect(&cv, ROW_X, y - 2, ROW_W, ROW_H - 1, 0x34489Cu); menu_desc_label = label; }
     if (on) ui_cursor(&cv, ROW_X + 3 + bob, y);
@@ -1566,9 +1589,13 @@ static void menu_draw(const uint8_t *fb) {
     char val[96], line[96];
     menu_lang_sync();
     if (touch_on) { mm_draw(fb); return; }
-    int i, t, x, n = menu_count(menu_tab), s = menu_sel[menu_tab];
+    int i, t, x, n, s, first, last;
     const char *help;
+    menu_scroll_fix(menu_tab, 1);
+    n = menu_count(menu_tab); s = menu_sel[menu_tab]; first = menu_scroll[menu_tab];
+    last = first + menu_vis(menu_tab) < n ? first + menu_vis(menu_tab) : n;
     menu_desc_label = NULL;
+    menu_desc_text = NULL;
     ui_backdrop(&cv, fb);
     ui_panel(&cv, PX, PY, PW, DPH);
     text_draw2x(&cv, PX + (PW - text_w2x(tr("OPTIONS"))) / 2, PY + 7, tr("OPTIONS"), UI_GOLD, UI_SHADOW);
@@ -1602,7 +1629,14 @@ static void menu_draw(const uint8_t *fb) {
             text_draw(&cv, CTL_RX, CTL_HEAD - 1, nm, gc ? UI_TEXT : UI_DIM, 1);
         }
     }
-    for (i = 0; i < n; i++) {
+    if (first > 0 || last < n) { /* more rows above or below: an arrow at the right edge for each side that has them */
+        int k;
+        for (k = 0; k < 3; k++) {
+            if (first > 0) cv_rect(&cv, ROW_X + ROW_W + 3 - k, ROW_Y - 4 + k, 1 + 2 * k, 1, UI_DIM);
+            if (last < n) cv_rect(&cv, ROW_X + ROW_W + 3 - k, ROW_Y + MENU_VIS * ROW_H - 5 - k, 1 + 2 * k, 1, UI_DIM);
+        }
+    }
+    for (i = first; i < last; i++) {
         int on = i == s;
         switch (menu_tab) {
         case TAB_IMAGE:
@@ -1640,6 +1674,7 @@ static void menu_draw(const uint8_t *fb) {
             if (i - 1 < GOPTS) {
                 gopt_init();
                 menu_row(i, on, snes_game_opts[i - 1].label, 1, snes_game_opts[i - 1].names[gopt_eff[i - 1]], 0, 0, 0);
+                if (on) menu_desc_text = snes_game_opts[i - 1].desc;
                 break;
             }
             menu_row(i, on, i - 1 - GOPTS == 0 ? "Resume" : i - 1 - GOPTS == 1 ? "Save game now" : i - 1 - GOPTS == 2 ? "Restore all defaults" : "Quit", 0, "", 0, 0, 0);
@@ -1647,7 +1682,10 @@ static void menu_draw(const uint8_t *fb) {
         }
     }
     if (menu_msg[0]) { text_fit(line, sizeof line, menu_msg, PW - 24); text_center(&cv, PX, PW, PY + DPH - 26, line, UI_WARN); }
-    if (!menu_msg[0] && menu_desc_label && menu_capture < 0) {
+    if (!menu_msg[0] && menu_desc_text && menu_capture < 0) {
+        text_fit(line, sizeof line, menu_desc_text, PW - 24);
+        text_center(&cv, PX, PW, PY + DPH - 28, line, UI_TEXT);
+    } else if (!menu_msg[0] && menu_desc_label && menu_capture < 0) {
         int d;
         for (d = 0; d < MENU_DESC_COUNT; d++)
             if (!strcmp(menu_descs[d].label, menu_desc_label)) {
@@ -2131,6 +2169,8 @@ static int menu_tap_canvas(int cx, int cy) {
         }
         if (cx < (menu_tab == TAB_CONTROLS ? CTL_X0 : ROW_X) || cx >= (menu_tab == TAB_CONTROLS ? CTL_X0 + CTL_ROWW : ROW_X + ROW_W) || cy < top) return 1;
         i = (cy - top) / rh;
+        if (i >= menu_vis(menu_tab)) return 1;
+        i += menu_scroll[menu_tab];
         if (i >= n) return 1;
         menu_sel[menu_tab] = i;
         menu_msg[0] = 0;
@@ -2352,6 +2392,11 @@ static void handle_events(void) {
         if (e.type == SDL_APP_DIDENTERFOREGROUND) t_next = SDL_GetPerformanceCounter(); /* the time spent away is not a stall */
         if (e.type == SDL_FINGERDOWN || e.type == SDL_FINGERMOTION || e.type == SDL_FINGERUP) { if (touch_on) touch_finger(&e); continue; }
         if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT && e.button.which != SDL_TOUCH_MOUSEID && (menu_open || slot_open)) { last_input_pad = 0; last_input_touch = 0; mouse_click(e.button.x, e.button.y); continue; }
+        if (e.type == SDL_MOUSEWHEEL && menu_open && !slot_open && !touch_on && menu_capture < 0 && e.wheel.y) {
+            menu_scroll[menu_tab] -= e.wheel.y * (e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1 : 1);
+            menu_scroll_fix(menu_tab, 0);
+            continue;
+        }
         if (e.type == SDL_CONTROLLERBUTTONDOWN) { last_input_pad = 1; last_input_touch = 0; touch_visible = 0; }
         if (e.type == SDL_KEYDOWN) { last_input_pad = 0; last_input_touch = 0; }
         if (e.type == SDL_CONTROLLERBUTTONDOWN && !slot_open && !menu_open && (e.cbutton.button == SDL_CONTROLLER_BUTTON_LEFTSTICK || e.cbutton.button == SDL_CONTROLLER_BUTTON_RIGHTSTICK)) {

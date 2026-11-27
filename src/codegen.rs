@@ -445,7 +445,8 @@ impl<'a> Emitter<'a> {
         }
         out.push_str("const GameOptDef snes_game_opts[] = {\n");
         for (i, o) in self.options.iter().enumerate() {
-            out.push_str(&format!("    {{{}, {}, {}, snes_game_opt_names_{i}, {}}},\n", q(&o.key), q(&o.label), o.names.len(), o.default));
+            let desc = o.desc.as_deref().map_or_else(|| "0".to_string(), q);
+            out.push_str(&format!("    {{{}, {}, {}, snes_game_opt_names_{i}, {}, {desc}}},\n", q(&o.key), q(&o.label), o.names.len(), o.default));
         }
         out.push_str(&format!("}};\nconst int snes_game_opt_count = {};\n", self.options.len()));
         out
@@ -1290,11 +1291,11 @@ sep xf=1 x=0034 p=10
     #[test]
     fn the_options_of_the_profile_become_a_table_in_the_entry_file() {
         let rom = [(0x8000, &[0xA9, 0x42, 0x85, 0x10, 0x60][..])];
-        let cfg = "[[option]]\nkey=\"language\"\nlabel=\"Say \\\"hi\\\"\"\nnames=[\"en\",\"es\"]\ndefault=\"es\"\n[[option]]\nkey=\"b\"\nlabel=\"B\"\nnames=[\"x\",\"y\",\"z\"]\ndefault=\"x\"";
+        let cfg = "[[option]]\nkey=\"language\"\nlabel=\"Say \\\"hi\\\"\"\nnames=[\"en\",\"es\"]\ndefault=\"es\"\n[[option]]\nkey=\"b\"\nlabel=\"B\"\nnames=[\"x\",\"y\",\"z\"]\ndefault=\"x\"\ndesc=\"Picks B\"";
         let out = gen_all(&rom, cfg, &[0x8000]);
         assert!(out.entry.contains("snes_game_opt_names_0[] = {\"en\", \"es\"};"), "{}", out.entry);
-        assert!(out.entry.contains("{\"language\", \"Say \\\"hi\\\"\", 2, snes_game_opt_names_0, 1},"), "{}", out.entry);
-        assert!(out.entry.contains("{\"b\", \"B\", 3, snes_game_opt_names_1, 0},"), "{}", out.entry);
+        assert!(out.entry.contains("{\"language\", \"Say \\\"hi\\\"\", 2, snes_game_opt_names_0, 1, 0},"), "{}", out.entry);
+        assert!(out.entry.contains("{\"b\", \"B\", 3, snes_game_opt_names_1, 0, \"Picks B\"},"), "{}", out.entry);
         assert!(out.entry.contains("const int snes_game_opt_count = 2;"), "{}", out.entry);
         let none = gen_all(&rom, "", &[0x8000]);
         assert!(none.entry.contains("const int snes_game_opt_count = 0;") && !none.entry.contains("snes_game_opt_names"), "{}", none.entry);

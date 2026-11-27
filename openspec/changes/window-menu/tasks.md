@@ -13,7 +13,7 @@
 ## 3. Resto de pestañas
 
 - [x] 3.1 (filas de 14, descripción de la fila elegida sobre el pie; el pie con las teclas ya existía) Imagen, Audio, Juego, Táctil: filas con aire, valores alineados, descripción de la fila elegida, pie con teclas
-- [ ] 3.2 Desplazamiento de listas largas
+- [x] 3.2 Desplazamiento de listas largas (escritorio: 13 filas, sigue al cursor, rueda del ratón, flechas al borde; el táctil ya lo tenía)
 
 ## 4. Selector de ranuras y menú del móvil
 

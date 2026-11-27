@@ -133,7 +133,7 @@ extern const int snes_game_players;
 void snes_rt_register_players(int players) { (void)players; }
 #endif
 
-#define MAX_GAME_OPT 16
+#define MAX_GAME_OPT 64
 static struct { char key[32]; long val; } game_opts[MAX_GAME_OPT];
 static int ngame_opts;
 
@@ -154,7 +154,7 @@ void snes_rt_register_options(const GameOptDef *opts, int count) { (void)opts; (
 /* The options the profile declares (snes_game_opts): `gopt_file` is what config.ini holds, `gopt_eff` what this run uses (the
  * command line sets it for this run only; the menu sets both). */
 static int gopt_file[MAX_GAME_OPT], gopt_eff[MAX_GAME_OPT];
-static unsigned gopt_cli;
+static uint64_t gopt_cli; /* bit i: option i was set on the command line */
 static int gopt_ready;
 
 static void gopt_init(void) {
@@ -188,14 +188,14 @@ static int gopt_parse(int i, const char *text, int *out) {
 static void gopt_set_cli(int i, int v) {
     gopt_init();
     gopt_eff[i] = v;
-    gopt_cli |= 1u << i;
+    gopt_cli |= (uint64_t)1 << i;
 }
 
 /* The player (menu): applies now and is saved. */
 static void gopt_set_user(int i, int v) {
     gopt_init();
     gopt_eff[i] = gopt_file[i] = v;
-    gopt_cli &= ~(1u << i);
+    gopt_cli &= ~((uint64_t)1 << i);
 }
 
 /* Parses KEY=NUMBER of --game-opt; returns 0 when it is malformed or there are too many. */
@@ -289,6 +289,9 @@ static void report(const char *cause);
 static void ppu_sync(void);
 static void write_scroll(uint32_t off, uint8_t v);
 static void write_m7(uint32_t off, uint8_t v);
+
+/* Where the internal header of the ROM is (LoROM: $7FC0); play.c reads the title from it. */
+static size_t rom_header_off(void) { return 0x7FC0u; }
 
 static uint8_t rom_byte(uint32_t a) {
     uint32_t bank = (a >> 16) & 0x7F;
